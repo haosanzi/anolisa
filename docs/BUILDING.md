@@ -1,5 +1,7 @@
 # Building ANOLISA from Source
 
+[中文版](BUILDING_CN.md)
+
 This guide describes how to prepare the development environment, build each component from source, run tests, and build RPM packages.
 
 Two paths are provided:
