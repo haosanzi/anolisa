@@ -5,7 +5,7 @@
  */
 
 import type React from 'react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
 import Link from 'ink-link';
@@ -14,6 +14,17 @@ import { Colors } from '../colors.js';
 import type { DeviceAuthorizationData } from '@copilot-shell/core';
 import { useKeypress } from '../hooks/useKeypress.js';
 import { t } from '../../i18n/index.js';
+
+/** Minimum terminal row count below which compact (low-flicker) mode is enabled. */
+const COMPACT_TERMINAL_HEIGHT = 35;
+/** Dots animation frames derived from elapsed seconds (Solution 1). */
+const DOTS_MAP = ['', '.', '..', '...'] as const;
+
+const formatTime = (seconds: number): string => {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
 
 interface QwenOAuthProgressProps {
   onTimeout: () => void;
@@ -79,31 +90,34 @@ function QrCodeDisplay({
 
 /**
  * Dynamic Status Display Component
- * Shows the loading animation, timer, and status messages
+ * Shows the loading animation, timer, and status messages.
+ * In compact mode (limited terminal height), renders a minimal single-line
+ * display to prevent flickering on scroll-heavy terminals.
  */
 function StatusDisplay({
-  timeRemaining,
+  dotsIndex,
+  isCompact,
+  formattedTime,
 }: {
-  timeRemaining: number;
+  dotsIndex: number;
+  isCompact: boolean;
+  formattedTime: string;
 }): React.JSX.Element {
-  const [dots, setDots] = useState<string>('');
+  if (isCompact) {
+    // Solution 3: single-line, no animation, no border — minimal redraws
+    return (
+      <Box paddingY={1}>
+        <Text>
+          {t('Waiting for authorization')}
+          {'...'} ({formattedTime} {t('remaining')}) —{' '}
+          {t('(Press ESC or CTRL+C to cancel)')}
+        </Text>
+      </Box>
+    );
+  }
 
-  // Slow dots animation at 500ms to avoid high-frequency Ink redraws
-  useEffect(() => {
-    const dotsTimer = setInterval(() => {
-      setDots((prev) => {
-        if (prev.length >= 3) return '';
-        return prev + '.';
-      });
-    }, 500);
-    return () => clearInterval(dotsTimer);
-  }, []);
-
-  const formatTime = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
+  // Solution 1: dots derived from dotsIndex (1 s step), no separate timer
+  const dots = DOTS_MAP[dotsIndex];
 
   return (
     <Box
@@ -122,7 +136,7 @@ function StatusDisplay({
 
       <Box marginTop={1} justifyContent="space-between">
         <Text color={Colors.Gray}>
-          {t('Time remaining:')} {formatTime(timeRemaining)}
+          {t('Time remaining:')} {formattedTime}
         </Text>
         <Text color={Colors.AccentPurple}>
           {t('(Press ESC or CTRL+C to cancel)')}
@@ -142,6 +156,16 @@ export function QwenOAuthProgress({
   const defaultTimeout = deviceAuth?.expires_in || 300; // Default 5 minutes
   const [timeRemaining, setTimeRemaining] = useState<number>(defaultTimeout);
   const [qrCodeData, setQrCodeData] = useState<string | null>(null);
+
+  // Detect limited-height terminal for compact fallback mode (Solution 3)
+  const isCompact =
+    !!process.stdout?.rows && process.stdout.rows < COMPACT_TERMINAL_HEIGHT;
+
+  // Compact mode: use ref for internal countdown, only setState at minute boundaries
+  const secondsRef = useRef(defaultTimeout);
+  const [minutesRemaining, setMinutesRemaining] = useState(
+    Math.ceil(defaultTimeout / 60),
+  );
 
   useKeypress(
     (key) => {
@@ -179,20 +203,29 @@ export function QwenOAuthProgress({
     generateQR();
   }, [deviceAuth?.verification_uri_complete]);
 
-  // Countdown timer
+  // Countdown timer (Solution 1 + 3: single timer; compact mode only setState at minute boundaries)
   useEffect(() => {
     const timer = setInterval(() => {
-      setTimeRemaining((prev) => {
-        if (prev <= 1) {
+      if (isCompact) {
+        secondsRef.current -= 1;
+        if (secondsRef.current <= 0) {
           onTimeout();
-          return 0;
+        } else if (secondsRef.current % 60 === 0) {
+          setMinutesRemaining(Math.ceil(secondsRef.current / 60));
         }
-        return prev - 1;
-      });
+      } else {
+        setTimeRemaining((prev) => {
+          if (prev <= 1) {
+            onTimeout();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [onTimeout]);
+  }, [onTimeout, isCompact]);
 
   // Memoize the QR code display to prevent unnecessary re-renders
   const qrCodeDisplay = useMemo(() => {
@@ -205,6 +238,14 @@ export function QwenOAuthProgress({
       />
     );
   }, [deviceAuth?.verification_uri_complete, qrCodeData]);
+
+  // Solution 1: derive dots index from elapsed time — no separate timer needed
+  const dotsIndex = (defaultTimeout - timeRemaining) % 4;
+
+  // Formatted time (compact: approximate minutes; normal: M:SS)
+  const formattedTime = isCompact
+    ? `~${minutesRemaining} min`
+    : formatTime(timeRemaining);
 
   // Handle timeout state
   if (authStatus === 'timeout') {
@@ -272,6 +313,16 @@ export function QwenOAuthProgress({
 
   // Show loading state when no device auth is available yet
   if (!deviceAuth) {
+    if (isCompact) {
+      return (
+        <Box paddingY={1}>
+          <Text>
+            {t('Waiting for Qwen OAuth authentication...')} ({formattedTime}{' '}
+            {t('remaining')}) — {t('(Press ESC or CTRL+C to cancel)')}
+          </Text>
+        </Box>
+      );
+    }
     return (
       <Box
         borderStyle="round"
@@ -288,8 +339,7 @@ export function QwenOAuthProgress({
         </Box>
         <Box marginTop={1} justifyContent="space-between">
           <Text color={Colors.Gray}>
-            {t('Time remaining:')} {Math.floor(timeRemaining / 60)}:
-            {(timeRemaining % 60).toString().padStart(2, '0')}
+            {t('Time remaining:')} {formattedTime}
           </Text>
           <Text color={Colors.AccentPurple}>
             {t('(Press ESC or CTRL+C to cancel)')}
@@ -305,7 +355,11 @@ export function QwenOAuthProgress({
       {qrCodeDisplay}
 
       {/* Dynamic Status Display */}
-      <StatusDisplay timeRemaining={timeRemaining} />
+      <StatusDisplay
+        dotsIndex={dotsIndex}
+        isCompact={isCompact}
+        formattedTime={formattedTime}
+      />
     </Box>
   );
 }

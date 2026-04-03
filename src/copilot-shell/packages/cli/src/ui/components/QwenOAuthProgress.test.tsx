@@ -284,11 +284,11 @@ describe('QwenOAuthProgress', () => {
         />,
       );
 
-      // Initial state should have no dots
+      // Initial state: elapsed=0, dotsIndex=0 -> no dots
       expect(lastFrame()).toContain('Waiting for authorization');
 
-      // Advance by 500ms to add first dot
-      vi.advanceTimersByTime(500);
+      // Advance by 1000ms (1 tick): elapsed=1, dotsIndex=1 -> '.'
+      vi.advanceTimersByTime(1000);
       rerender(
         <QwenOAuthProgress
           onTimeout={mockOnTimeout}
@@ -298,8 +298,8 @@ describe('QwenOAuthProgress', () => {
       );
       expect(lastFrame()).toContain('Waiting for authorization.');
 
-      // Advance by another 500ms to add second dot
-      vi.advanceTimersByTime(500);
+      // Advance by another 1000ms: elapsed=2, dotsIndex=2 -> '..'
+      vi.advanceTimersByTime(1000);
       rerender(
         <QwenOAuthProgress
           onTimeout={mockOnTimeout}
@@ -309,8 +309,8 @@ describe('QwenOAuthProgress', () => {
       );
       expect(lastFrame()).toContain('Waiting for authorization..');
 
-      // Advance by another 500ms to add third dot
-      vi.advanceTimersByTime(500);
+      // Advance by another 1000ms: elapsed=3, dotsIndex=3 -> '...'
+      vi.advanceTimersByTime(1000);
       rerender(
         <QwenOAuthProgress
           onTimeout={mockOnTimeout}
@@ -320,8 +320,8 @@ describe('QwenOAuthProgress', () => {
       );
       expect(lastFrame()).toContain('Waiting for authorization...');
 
-      // Advance by another 500ms to reset dots
-      vi.advanceTimersByTime(500);
+      // Advance by another 1000ms: elapsed=4, dotsIndex=0 -> no dots
+      vi.advanceTimersByTime(1000);
       rerender(
         <QwenOAuthProgress
           onTimeout={mockOnTimeout}
