@@ -125,9 +125,12 @@ export const useGeminiStream = (
   // Kept separate so that secrets spanning multiple stream chunks can be
   // detected and masked in their entirety rather than chunk-by-chunk.
   const rawTurnContentRef = useRef('');
-  // Byte offset into the fully-redacted turn content that has already been
-  // committed to static history items (via addItem / split logic).
-  const committedStaticLengthRef = useRef(0);
+  // The actual redacted text that has already been committed to static history
+  // items (via addItem / split logic). Stored as a string rather than a numeric
+  // offset so that retroactive redaction — where a later chunk completes a
+  // partial secret and causes the full redacted string to shrink — cannot shift
+  // the boundary into an incorrect position.
+  const committedRedactedTextRef = useRef('');
   const [isResponding, setIsResponding] = useState<boolean>(false);
   const [thought, setThought] = useState<ThoughtSummary | null>(null);
   const [pendingHistoryItem, pendingHistoryItemRef, setPendingHistoryItem] =
@@ -488,9 +491,24 @@ export const useGeminiStream = (
       // Redact the full accumulated raw content, then slice off the portion
       // that has already been committed to static history items.
       const fullyRedacted = redactSecrets(rawTurnContentRef.current);
-      let newGeminiMessageBuffer = fullyRedacted.slice(
-        committedStaticLengthRef.current,
-      );
+      // Use the committed text length (not a raw integer offset) so that if a
+      // later chunk retroactively triggers redaction and shortens the string,
+      // the pending slice still starts at the correct boundary.
+      const committedLen = committedRedactedTextRef.current.length;
+      if (
+        process.env['NODE_ENV'] !== 'production' &&
+        committedLen > 0 &&
+        !fullyRedacted.startsWith(committedRedactedTextRef.current)
+      ) {
+        // This should never happen with current SECRET_PATTERNS (all single-line,
+        // cannot span \n\n or ``` split points). If it does, a secret has been
+        // partially committed to immutable static history — log it.
+        console.warn(
+          '[redactSecrets] retroactive redaction boundary violation: ' +
+            'a secret may have been partially exposed in static history.',
+        );
+      }
+      let newGeminiMessageBuffer = fullyRedacted.slice(committedLen);
       if (
         pendingHistoryItemRef.current?.type !== 'gemini' &&
         pendingHistoryItemRef.current?.type !== 'gemini_content'
@@ -499,9 +517,7 @@ export const useGeminiStream = (
           addItem(pendingHistoryItemRef.current, userMessageTimestamp);
         }
         setPendingHistoryItem({ type: 'gemini', text: '' });
-        newGeminiMessageBuffer = fullyRedacted.slice(
-          committedStaticLengthRef.current,
-        );
+        newGeminiMessageBuffer = fullyRedacted.slice(committedLen);
       }
       // Split large messages for better rendering performance. Ideally,
       // we should maximize the amount of output sent to <Static />.
@@ -533,9 +549,10 @@ export const useGeminiStream = (
           userMessageTimestamp,
         );
         setPendingHistoryItem({ type: 'gemini_content', text: afterText });
-        // Track how much of the redacted content is now in static items so
-        // that subsequent chunks can derive the correct pending slice.
-        committedStaticLengthRef.current += splitPoint;
+        // Record the actual committed redacted text (not just its length) so that
+        // if future chunks trigger retroactive redaction the boundary detection
+        // above can catch the drift.
+        committedRedactedTextRef.current += beforeText;
         newGeminiMessageBuffer = afterText;
       }
       return newGeminiMessageBuffer;
@@ -844,7 +861,7 @@ export const useGeminiStream = (
       let geminiMessageBuffer = '';
       // Reset per-turn raw buffer and committed-length tracker.
       rawTurnContentRef.current = '';
-      committedStaticLengthRef.current = 0;
+      committedRedactedTextRef.current = '';
       let thoughtBuffer = '';
       const toolCallRequests: ToolCallRequestInfo[] = [];
       for await (const event of stream) {
