@@ -1,6 +1,5 @@
 """Thread-safe, rotation-aware JSONL writer for security events."""
 
-
 import fcntl
 import json
 import re
@@ -162,7 +161,7 @@ class SecurityEventWriter:
             for entry in dir_path.iterdir():
                 if not entry.name.startswith(prefix):
                     continue
-                suffix = entry.name[len(prefix):]
+                suffix = entry.name[len(prefix) :]
                 if _BACKUP_SUFFIX_RE.match(suffix) and entry.is_file():
                     mtime = entry.stat().st_mtime
                     backup_files.append((entry, mtime))

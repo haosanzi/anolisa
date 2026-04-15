@@ -9,6 +9,7 @@ from agent_sec_cli.security_events.schema import SecurityEvent
 class TestGetWriter(unittest.TestCase):
     def test_singleton_returns_same_instance(self):
         import agent_sec_cli.security_events
+
         # Reset singleton
         agent_sec_cli.security_events._writer = None
         w1 = agent_sec_cli.security_events.get_writer()

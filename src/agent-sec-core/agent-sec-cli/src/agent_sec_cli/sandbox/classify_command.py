@@ -15,7 +15,6 @@
     python3 classify_command.py --json "rm -rf /"
 """
 
-
 import json
 import re
 import shlex

@@ -1,6 +1,5 @@
 """SecurityEvent pydantic model — the canonical event envelope."""
 
-
 import os
 import uuid
 from datetime import datetime, timezone

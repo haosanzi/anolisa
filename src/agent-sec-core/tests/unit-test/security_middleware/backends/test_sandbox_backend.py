@@ -37,9 +37,7 @@ class TestSandboxBackend(unittest.TestCase):
             self.assertEqual(result.data[key], "", f"{key} should default to empty")
 
     def test_extra_kwargs_ignored(self):
-        result = self.backend.execute(
-            self.ctx, decision="deny", extra_field="ignored"
-        )
+        result = self.backend.execute(self.ctx, decision="deny", extra_field="ignored")
         self.assertTrue(result.success)
         self.assertNotIn("extra_field", result.data)
 

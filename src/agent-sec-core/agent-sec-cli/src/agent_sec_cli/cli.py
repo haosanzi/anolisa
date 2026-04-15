@@ -1,8 +1,6 @@
 """CLI entry point for agent-sec-cli package."""
 
-
 import typer
-
 from agent_sec_cli.security_middleware import invoke
 
 app = typer.Typer(
@@ -70,9 +68,12 @@ def harden(
     """System security hardening."""
     # Validate mode choices
     if mode not in ["scan", "reinforce", "dry-run"]:
-        typer.echo(f"Error: Invalid mode '{mode}'. Choose from: scan, reinforce, dry-run", err=True)
+        typer.echo(
+            f"Error: Invalid mode '{mode}'. Choose from: scan, reinforce, dry-run",
+            err=True,
+        )
         raise typer.Exit(code=1)
-    
+
     result = invoke("harden", mode=mode, config=config)
     if result.stdout:
         typer.echo(result.stdout)

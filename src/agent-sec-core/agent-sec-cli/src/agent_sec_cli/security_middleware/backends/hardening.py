@@ -9,7 +9,6 @@ Output format (verified against loongshield source):
 ANSI colour codes are stripped before parsing.
 """
 
-
 import re
 import subprocess
 from typing import Any
@@ -46,9 +45,7 @@ _RULE_STATUS_RE = re.compile(
     r"(?P<message>.+?)\s*$"
 )
 
-_ENGINE_ERROR_RE = re.compile(
-    r"Engine\s+Error:\s*(?P<message>.+?)\s*$"
-)
+_ENGINE_ERROR_RE = re.compile(r"Engine\s+Error:\s*(?P<message>.+?)\s*$")
 
 
 class HardeningBackend(BaseBackend):
@@ -118,19 +115,23 @@ class HardeningBackend(BaseBackend):
         for line in clean_output.splitlines():
             m = _RULE_STATUS_RE.search(line)
             if m:
-                entries.append({
-                    "rule_id": m.group("rule_id"),
-                    "status": m.group("status"),
-                    "message": m.group("message").strip(),
-                })
+                entries.append(
+                    {
+                        "rule_id": m.group("rule_id"),
+                        "status": m.group("status"),
+                        "message": m.group("message").strip(),
+                    }
+                )
                 continue
             m = _ENGINE_ERROR_RE.search(line)
             if m:
-                entries.append({
-                    "rule_id": "",
-                    "status": "Engine Error",
-                    "message": m.group("message").strip(),
-                })
+                entries.append(
+                    {
+                        "rule_id": "",
+                        "status": "Engine Error",
+                        "message": m.group("message").strip(),
+                    }
+                )
 
         # --- Partition into failures vs fixed_items ---
         # In reinforce mode, FAIL/FAILED lines are pre-fix detections;
@@ -146,18 +147,22 @@ class HardeningBackend(BaseBackend):
         # Fallback: if summary reports non-pass rules but nothing was captured,
         # add a warning so the event is never silently incomplete.
         reported_nonpass = (
-            data.get("failed", 0) + data.get("manual", 0)
-            + data.get("fixed", 0) + data.get("dry_run_pending", 0)
+            data.get("failed", 0)
+            + data.get("manual", 0)
+            + data.get("fixed", 0)
+            + data.get("dry_run_pending", 0)
         )
         if reported_nonpass > 0 and not data["failures"] and not data["fixed_items"]:
-            data["failures"].append({
-                "rule_id": "",
-                "status": "UNKNOWN",
-                "message": (
-                    f"Summary reports {reported_nonpass} non-pass rule(s) "
-                    "but per-rule details could not be parsed from output."
-                ),
-            })
+            data["failures"].append(
+                {
+                    "rule_id": "",
+                    "status": "UNKNOWN",
+                    "message": (
+                        f"Summary reports {reported_nonpass} non-pass rule(s) "
+                        "but per-rule details could not be parsed from output."
+                    ),
+                }
+            )
 
         return ActionResult(
             success=(proc.returncode == 0),

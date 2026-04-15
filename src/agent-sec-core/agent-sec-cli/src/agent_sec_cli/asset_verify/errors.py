@@ -1,7 +1,6 @@
 """Skill verification error definitions."""
 
 
-
 class SkillVerifyError(Exception):
     """Base exception for skill verification"""
 
@@ -12,7 +11,9 @@ class ErrSigMissing(SkillVerifyError):
     code = 10
 
     def __init__(self, skill_name: str) -> None:
-        super().__init__(f"ERR_SIG_MISSING: Missing .skill-meta/.skill.sig in '{skill_name}'")
+        super().__init__(
+            f"ERR_SIG_MISSING: Missing .skill-meta/.skill.sig in '{skill_name}'"
+        )
 
 
 class ErrManifestMissing(SkillVerifyError):
@@ -36,7 +37,9 @@ class ErrSigInvalid(SkillVerifyError):
 class ErrHashMismatch(SkillVerifyError):
     code = 13
 
-    def __init__(self, skill_name: str, file_path: str, expected: str, actual: str) -> None:
+    def __init__(
+        self, skill_name: str, file_path: str, expected: str, actual: str
+    ) -> None:
         super().__init__(
             f"ERR_HASH_MISMATCH: File hash mismatch for '{file_path}' in '{skill_name}'\n"
             f"  Expected: {expected}\n"

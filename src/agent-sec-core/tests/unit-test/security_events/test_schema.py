@@ -54,8 +54,15 @@ class TestSecurityEventToDict(unittest.TestCase):
         evt = SecurityEvent(event_type="t", category="c", details={"a": 1})
         d = evt.to_dict()
         expected_keys = {
-            "event_id", "event_type", "category", "timestamp",
-            "trace_id", "pid", "uid", "session_id", "details",
+            "event_id",
+            "event_type",
+            "category",
+            "timestamp",
+            "trace_id",
+            "pid",
+            "uid",
+            "session_id",
+            "details",
         }
         self.assertEqual(set(d.keys()), expected_keys)
 

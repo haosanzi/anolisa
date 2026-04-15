@@ -1,6 +1,5 @@
 """ActionResult — unified return type for all backend executions."""
 
-
 from dataclasses import dataclass, field
 
 

@@ -230,6 +230,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang llvm libssl-dev libseccomp-dev bubblewrap
 
+      - name: Check formatting
+        run: |
+          cd src/agent-sec-core
+          make python-code-pretty
+          if ! git diff-index --quiet HEAD --; then
+              echo "ERROR: Code style check failed. Please run 'make python-code-pretty' locally." >&2
+              git status --porcelain >&2
+              exit 1
+          fi
+          echo "Code style check passed."
+
       - name: Run Python tests
         run: |
           cd src/agent-sec-core

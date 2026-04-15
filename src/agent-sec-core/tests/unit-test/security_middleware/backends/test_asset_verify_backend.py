@@ -6,10 +6,14 @@ run_verification is mocked — we test the backend's orchestration and error han
 import unittest
 from unittest.mock import patch
 
-from agent_sec_cli.security_middleware.backends.asset_verify import AssetVerifyBackend
+from agent_sec_cli.security_middleware.backends.asset_verify import (
+    AssetVerifyBackend,
+)
 from agent_sec_cli.security_middleware.context import RequestContext
 
-_PATCH_TARGET = "agent_sec_cli.security_middleware.backends.asset_verify.run_verification"
+_PATCH_TARGET = (
+    "agent_sec_cli.security_middleware.backends.asset_verify.run_verification"
+)
 
 
 class TestAssetVerifyBackend(unittest.TestCase):

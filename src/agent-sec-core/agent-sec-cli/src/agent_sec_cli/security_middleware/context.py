@@ -1,6 +1,5 @@
 """RequestContext — per-invocation context propagated through the call chain."""
 
-
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone

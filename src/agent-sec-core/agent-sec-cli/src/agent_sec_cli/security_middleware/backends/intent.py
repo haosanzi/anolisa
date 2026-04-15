@@ -1,6 +1,5 @@
 """Intent backend — future stub for intent-level security analysis."""
 
-
 from typing import Any
 
 from agent_sec_cli.security_middleware.backends.base import BaseBackend

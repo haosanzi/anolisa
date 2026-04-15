@@ -19,9 +19,7 @@ def _make_event(**overrides):
 
 class TestWriterBasic(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".jsonl", delete=False
-        )
+        self.tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
         self.tmp.close()
         self.writer = SecurityEventWriter(path=self.tmp.name)
 
@@ -52,9 +50,7 @@ class TestWriterBasic(unittest.TestCase):
 
 class TestWriterRotation(unittest.TestCase):
     def test_rotation_detection(self):
-        tmp = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".jsonl", delete=False
-        )
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
         tmp.close()
         writer = SecurityEventWriter(path=tmp.name)
 
@@ -83,9 +79,7 @@ class TestWriterAutoRotation(unittest.TestCase):
     """Test automatic file size-based rotation."""
 
     def setUp(self):
-        self.tmp = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".jsonl", delete=False
-        )
+        self.tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
         self.tmp.close()
 
     def tearDown(self):
@@ -103,9 +97,7 @@ class TestWriterAutoRotation(unittest.TestCase):
     def test_auto_rotation_on_size_limit(self):
         """Test that log file is rotated when it exceeds max_bytes."""
         # Create writer with small max_bytes (500 bytes) for testing
-        writer = SecurityEventWriter(
-            path=self.tmp.name, max_bytes=500, backup_count=3
-        )
+        writer = SecurityEventWriter(path=self.tmp.name, max_bytes=500, backup_count=3)
 
         # Write events until rotation should occur
         for i in range(20):
@@ -116,13 +108,14 @@ class TestWriterAutoRotation(unittest.TestCase):
         dir_path = os.path.dirname(self.tmp.name)
         base_name = os.path.basename(self.tmp.name)
         backup_files = [
-            f for f in os.listdir(dir_path)
-            if f.startswith(f"{base_name}.") and os.path.isfile(os.path.join(dir_path, f))
+            f
+            for f in os.listdir(dir_path)
+            if f.startswith(f"{base_name}.")
+            and os.path.isfile(os.path.join(dir_path, f))
         ]
 
         self.assertTrue(
-            len(backup_files) > 0,
-            "At least one rotated backup file should exist"
+            len(backup_files) > 0, "At least one rotated backup file should exist"
         )
 
         # Original file should exist and be reasonably small (within 20% of max_bytes)
@@ -132,46 +125,40 @@ class TestWriterAutoRotation(unittest.TestCase):
 
     def test_backup_count_limit(self):
         """Test that old backups are deleted when backup_count is exceeded."""
-        writer = SecurityEventWriter(
-            path=self.tmp.name, max_bytes=300, backup_count=3
-        )
+        writer = SecurityEventWriter(path=self.tmp.name, max_bytes=300, backup_count=3)
 
         # Write enough events to trigger multiple rotations
         for i in range(50):
-            writer.write(_make_event(
-                event_type=f"evt_{i}",
-                details={"data": "y" * 50}
-            ))
+            writer.write(_make_event(event_type=f"evt_{i}", details={"data": "y" * 50}))
 
         # Count backup files
         dir_path = os.path.dirname(self.tmp.name)
         base_name = os.path.basename(self.tmp.name)
         backup_files = [
-            f for f in os.listdir(dir_path)
-            if f.startswith(f"{base_name}.") and os.path.isfile(os.path.join(dir_path, f))
+            f
+            for f in os.listdir(dir_path)
+            if f.startswith(f"{base_name}.")
+            and os.path.isfile(os.path.join(dir_path, f))
         ]
 
         self.assertLessEqual(
             len(backup_files),
             4,  # Allow 1 extra for timing
-            f"Should have at most 4 backup files, but found {len(backup_files)}: {backup_files}"
+            f"Should have at most 4 backup files, but found {len(backup_files)}: {backup_files}",
         )
 
     def test_rotation_preserves_events(self):
         """Test that events are not lost during rotation."""
         import time
 
-        writer = SecurityEventWriter(
-            path=self.tmp.name, max_bytes=1000, backup_count=5
-        )
+        writer = SecurityEventWriter(path=self.tmp.name, max_bytes=1000, backup_count=5)
 
         # Write events
         total_events = 15
         for i in range(total_events):
-            writer.write(_make_event(
-                event_id=f"event-{i}",
-                details={"payload": "z" * 40}
-            ))
+            writer.write(
+                _make_event(event_id=f"event-{i}", details={"payload": "z" * 40})
+            )
             # Small delay to ensure unique timestamps for backup files
             time.sleep(0.01)
 
@@ -179,7 +166,7 @@ class TestWriterAutoRotation(unittest.TestCase):
         total_count = 0
         dir_path = os.path.dirname(self.tmp.name)
         base_name = os.path.basename(self.tmp.name)
-        
+
         # Include main file and all backup files
         all_files = [self.tmp.name]
         if os.path.isdir(dir_path):
@@ -195,60 +182,54 @@ class TestWriterAutoRotation(unittest.TestCase):
         self.assertEqual(
             total_count,
             total_events,
-            f"Should have {total_events} total events across all files"
+            f"Should have {total_events} total events across all files",
         )
 
     def test_timestamp_format_in_backup_filename(self):
         """Test that backup files use timestamp format with millisecond precision."""
-        writer = SecurityEventWriter(
-            path=self.tmp.name, max_bytes=400, backup_count=5
-        )
+        writer = SecurityEventWriter(path=self.tmp.name, max_bytes=400, backup_count=5)
 
         # Write enough to trigger rotation
         for i in range(20):
-            writer.write(_make_event(
-                event_type=f"evt_{i}",
-                details={"data": "x" * 50}
-            ))
+            writer.write(_make_event(event_type=f"evt_{i}", details={"data": "x" * 50}))
 
         # Find backup files
         dir_path = os.path.dirname(self.tmp.name)
         base_name = os.path.basename(self.tmp.name)
         backup_files = [
-            f for f in os.listdir(dir_path)
-            if f.startswith(f"{base_name}.") and not f.endswith(".lock") and os.path.isfile(os.path.join(dir_path, f))
+            f
+            for f in os.listdir(dir_path)
+            if f.startswith(f"{base_name}.")
+            and not f.endswith(".lock")
+            and os.path.isfile(os.path.join(dir_path, f))
         ]
 
         # Check that backup files have timestamp pattern:
         #   YYYYMMDD-HHMMSS.fff            (millisecond precision)
         #   YYYYMMDD-HHMMSS.fff.<counter>   (collision-guard suffix)
         import re
+
         timestamp_pattern = re.compile(r"^\d{8}-\d{6}\.\d{3}(\.\d+)?$")
 
         for backup_file in backup_files:
             # Extract the timestamp suffix
-            suffix = backup_file[len(base_name) + 1:]
+            suffix = backup_file[len(base_name) + 1 :]
             self.assertTrue(
                 timestamp_pattern.match(suffix),
                 f"Backup file '{backup_file}' should have timestamp format "
-                f"YYYYMMDD-HHMMSS.fff[.N], got suffix: {suffix}"
+                f"YYYYMMDD-HHMMSS.fff[.N], got suffix: {suffix}",
             )
 
     def test_oldest_backups_are_deleted(self):
         """Test that oldest backup files are deleted when exceeding backup_count."""
         import time
-        
-        writer = SecurityEventWriter(
-            path=self.tmp.name, max_bytes=300, backup_count=3
-        )
+
+        writer = SecurityEventWriter(path=self.tmp.name, max_bytes=300, backup_count=3)
 
         # Write enough events to trigger multiple rotations (at least 5)
         # This should create more than 3 backups, triggering cleanup
         for i in range(60):
-            writer.write(_make_event(
-                event_type=f"evt_{i}",
-                details={"data": "y" * 50}
-            ))
+            writer.write(_make_event(event_type=f"evt_{i}", details={"data": "y" * 50}))
             # Small delay to ensure different timestamps
             time.sleep(0.01)
 
@@ -256,21 +237,23 @@ class TestWriterAutoRotation(unittest.TestCase):
         dir_path = os.path.dirname(self.tmp.name)
         base_name = os.path.basename(self.tmp.name)
         backup_files = [
-            f for f in os.listdir(dir_path)
-            if f.startswith(f"{base_name}.") and os.path.isfile(os.path.join(dir_path, f))
+            f
+            for f in os.listdir(dir_path)
+            if f.startswith(f"{base_name}.")
+            and os.path.isfile(os.path.join(dir_path, f))
         ]
 
         # Should have approximately backup_count (3) backup files, allow 1 extra for timing
         self.assertLessEqual(
             len(backup_files),
             4,
-            f"Should have at most 4 backup files after cleanup, but found {len(backup_files)}: {sorted(backup_files)}"
+            f"Should have at most 4 backup files after cleanup, but found {len(backup_files)}: {sorted(backup_files)}",
         )
 
         # Verify that the backups are the most recent ones (by mtime)
         backup_paths = [os.path.join(dir_path, f) for f in backup_files]
         mtimes = [os.path.getmtime(p) for p in backup_paths]
-        
+
         # All backup mtimes should be relatively recent (within last few seconds)
         current_time = time.time()
         for mtime in mtimes:
@@ -278,7 +261,7 @@ class TestWriterAutoRotation(unittest.TestCase):
             self.assertLess(
                 current_time - mtime,
                 10,
-                "Backup files should be recent, not old ones that should have been deleted"
+                "Backup files should be recent, not old ones that should have been deleted",
             )
 
         # Verify current file exists and is reasonably small
@@ -289,48 +272,50 @@ class TestWriterAutoRotation(unittest.TestCase):
     def test_cleanup_preserves_most_recent_backups(self):
         """Test that cleanup keeps the most recent backups, not random ones."""
         import time
-        
-        writer = SecurityEventWriter(
-            path=self.tmp.name, max_bytes=250, backup_count=2
-        )
+
+        writer = SecurityEventWriter(path=self.tmp.name, max_bytes=250, backup_count=2)
 
         # Trigger multiple rotations with delays
         rotation_times = []
         for batch in range(5):
             for i in range(10):
-                writer.write(_make_event(
-                    event_type=f"batch{batch}_evt{i}",
-                    details={"data": "z" * 50}
-                ))
+                writer.write(
+                    _make_event(
+                        event_type=f"batch{batch}_evt{i}", details={"data": "z" * 50}
+                    )
+                )
             time.sleep(0.05)  # Ensure different timestamps between batches
-        
+
         # Get backup files sorted by name (which includes timestamp)
         dir_path = os.path.dirname(self.tmp.name)
         base_name = os.path.basename(self.tmp.name)
-        backup_files = sorted([
-            f for f in os.listdir(dir_path)
-            if f.startswith(f"{base_name}.") and os.path.isfile(os.path.join(dir_path, f))
-        ])
+        backup_files = sorted(
+            [
+                f
+                for f in os.listdir(dir_path)
+                if f.startswith(f"{base_name}.")
+                and os.path.isfile(os.path.join(dir_path, f))
+            ]
+        )
 
         # Should have approximately 2 backups, allow 1 extra for timing
         self.assertLessEqual(
             len(backup_files),
             3,
-            f"Should have at most 3 backup files, but found {len(backup_files)}"
+            f"Should have at most 3 backup files, but found {len(backup_files)}",
         )
 
         # Verify they are ordered by timestamp (lexicographic sort = temporal sort)
         # The second backup should have a later timestamp than the first
-        ts1 = backup_files[0][len(base_name) + 1:]
-        ts2 = backup_files[1][len(base_name) + 1:]
+        ts1 = backup_files[0][len(base_name) + 1 :]
+        ts2 = backup_files[1][len(base_name) + 1 :]
         self.assertGreater(
-            ts2, ts1,
-            f"Backups should be ordered by timestamp: {ts1} < {ts2}"
+            ts2, ts1, f"Backups should be ordered by timestamp: {ts1} < {ts2}"
         )
 
     def test_cleanup_detailed_verification(self):
         """Comprehensive test of cleanup mechanism with detailed verification.
-        
+
         This test verifies:
         1. Exactly backup_count files are retained
         2. Old backups are actually deleted (not just ignored)
@@ -339,55 +324,56 @@ class TestWriterAutoRotation(unittest.TestCase):
         5. Backup file metadata (size, mtime) is valid
         """
         import time
-        
+
         # Use a larger max_bytes to accommodate event sizes
         # Each event with {"data": "x" * 50} is ~200-250 bytes
         max_bytes = 1000
-        
+
         writer = SecurityEventWriter(
             path=self.tmp.name, max_bytes=max_bytes, backup_count=3
         )
 
         # Write enough to trigger at least 5-6 rotations
         for i in range(100):
-            writer.write(_make_event(
-                event_type=f"evt_{i}",
-                details={"data": "x" * 50}
-            ))
+            writer.write(_make_event(event_type=f"evt_{i}", details={"data": "x" * 50}))
             time.sleep(0.01)  # Ensure different timestamps
-        
+
         # Analyze results
-        dir_path = os.path.dirname(self.tmp.name) or '.'
+        dir_path = os.path.dirname(self.tmp.name) or "."
         base_name = os.path.basename(self.tmp.name)
-        
+
         all_files = os.listdir(dir_path)
-        backup_files = sorted([
-            f for f in all_files
-            if f.startswith(f'{base_name}.') and os.path.isfile(os.path.join(dir_path, f))
-        ])
-        
+        backup_files = sorted(
+            [
+                f
+                for f in all_files
+                if f.startswith(f"{base_name}.")
+                and os.path.isfile(os.path.join(dir_path, f))
+            ]
+        )
+
         # Verification 1: Approximately backup_count backups, allow 1 extra for timing
         self.assertLessEqual(
             len(backup_files),
             4,
-            f"Should have at most 4 backup files, but found {len(backup_files)}: {backup_files}"
+            f"Should have at most 4 backup files, but found {len(backup_files)}: {backup_files}",
         )
-        
+
         # Verification 2: All backups have valid metadata
         backup_paths = []
         for bf in backup_files:
             filepath = os.path.join(dir_path, bf)
             backup_paths.append(filepath)
-            
+
             # File should exist and be readable
             self.assertTrue(os.path.exists(filepath))
             # File size should be >= 0 (allow empty files from immediate rotation)
             self.assertGreaterEqual(os.path.getsize(filepath), 0)
-            
+
             # Should have valid mtime
             mtime = os.path.getmtime(filepath)
             self.assertGreater(mtime, 0)
-        
+
         # Verification 3: All backups are recent (within last 5 seconds)
         current_time = time.time()
         for bf in backup_files:
@@ -397,30 +383,30 @@ class TestWriterAutoRotation(unittest.TestCase):
             self.assertLess(
                 age,
                 5,
-                f"Backup {bf} should be recent (< 5s old), but is {age:.1f}s old"
+                f"Backup {bf} should be recent (< 5s old), but is {age:.1f}s old",
             )
-        
+
         # Verification 4: Current file exists and is reasonably small
         # Note: May slightly exceed max_bytes if a single event is large
         self.assertTrue(
             os.path.exists(self.tmp.name),
-            "Current log file should exist after rotation"
+            "Current log file should exist after rotation",
         )
         current_size = os.path.getsize(self.tmp.name)
         # Allow some slack for the last event that triggered rotation
         self.assertLess(
             current_size,
             max_bytes + 300,  # max_bytes + one event size
-            f"Current file ({current_size} bytes) should be reasonably small (< {max_bytes + 300})"
+            f"Current file ({current_size} bytes) should be reasonably small (< {max_bytes + 300})",
         )
-        
+
         # Verification 5: Backups are ordered by time (newer backups have later mtimes)
         mtimes = [os.path.getmtime(p) for p in backup_paths]
         for i in range(len(mtimes) - 1):
             self.assertLessEqual(
                 mtimes[i],
                 mtimes[i + 1],
-                f"Backups should be ordered by time: backup[{i}] <= backup[{i+1}]"
+                f"Backups should be ordered by time: backup[{i}] <= backup[{i+1}]",
             )
 
 
@@ -442,11 +428,13 @@ class TestCleanupBackupMatching(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def _create_file(self, name, age_offset=0):
         """Create a file in tmpdir and set its mtime to (now - age_offset) seconds."""
         import time
+
         path = os.path.join(self.tmpdir, name)
         with open(path, "w") as fh:
             fh.write("data\n")
@@ -472,7 +460,9 @@ class TestCleanupBackupMatching(unittest.TestCase):
 
         remaining = self._list_files()
         # Only the 2 most recent (by mtime) should survive
-        self.assertLessEqual(len(remaining), 2, f"Expected <= 2 backups, got: {remaining}")
+        self.assertLessEqual(
+            len(remaining), 2, f"Expected <= 2 backups, got: {remaining}"
+        )
         # The two oldest (age_offset=40, 30) should be gone
         self.assertNotIn("security-events.jsonl.20260101-120000.100", remaining)
         self.assertNotIn("security-events.jsonl.20260101-120000.100.1", remaining)
@@ -493,9 +483,13 @@ class TestCleanupBackupMatching(unittest.TestCase):
 
         remaining = self._list_files()
         # All non-backup files must survive
-        for name in ["security-events.jsonl.old", "security-events.jsonl.bak",
-                     "security-events.jsonl.lock", "security-events.jsonl.tmp",
-                     "security-events.jsonl.schema"]:
+        for name in [
+            "security-events.jsonl.old",
+            "security-events.jsonl.bak",
+            "security-events.jsonl.lock",
+            "security-events.jsonl.tmp",
+            "security-events.jsonl.schema",
+        ]:
             self.assertIn(name, remaining, f"{name} should NOT have been deleted")
         # The real backup should also survive (only 1 backup, limit is 5)
         self.assertIn("security-events.jsonl.20260101-120000.100", remaining)
@@ -532,9 +526,10 @@ class TestCleanupBackupMatching(unittest.TestCase):
 # Helper for cross-process tests (must be module-level & picklable)
 # ------------------------------------------------------------------
 
+
 def _child_writer(path, proc_id, event_count, max_bytes, backup_count):
     """Entry point executed inside each child process.
-    
+
     Returns a list of event_type strings that this process successfully
     passed to write() — used for post-mortem analysis when events are lost.
     """
@@ -563,9 +558,7 @@ class TestWriterMultiProcessSafety(unittest.TestCase):
     """
 
     def setUp(self):
-        self.tmp = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".jsonl", delete=False
-        )
+        self.tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
         self.tmp.close()
 
     def tearDown(self):
@@ -595,9 +588,7 @@ class TestWriterMultiProcessSafety(unittest.TestCase):
         for p in procs:
             p.join(timeout=30)
         for i, p in enumerate(procs):
-            self.assertEqual(
-                p.exitcode, 0, f"Child {i} exited with code {p.exitcode}"
-            )
+            self.assertEqual(p.exitcode, 0, f"Child {i} exited with code {p.exitcode}")
         return procs
 
     def _collect_all_events(self):
@@ -606,7 +597,9 @@ class TestWriterMultiProcessSafety(unittest.TestCase):
         base_name = os.path.basename(self.tmp.name)
         all_files = [self.tmp.name]
         for name in os.listdir(dir_path):
-            if name.startswith(f"{base_name}.") and not name.endswith((".lock", ".tmp")):
+            if name.startswith(f"{base_name}.") and not name.endswith(
+                (".lock", ".tmp")
+            ):
                 all_files.append(os.path.join(dir_path, name))
 
         events = []
@@ -624,8 +617,15 @@ class TestWriterMultiProcessSafety(unittest.TestCase):
 
     # Required fields that every serialised SecurityEvent must carry
     _REQUIRED_FIELDS = {
-        "event_id", "event_type", "category", "timestamp",
-        "trace_id", "pid", "uid", "session_id", "details",
+        "event_id",
+        "event_type",
+        "category",
+        "timestamp",
+        "trace_id",
+        "pid",
+        "uid",
+        "session_id",
+        "details",
     }
 
     def _assert_valid_event(self, record, context=""):
@@ -671,9 +671,7 @@ class TestWriterMultiProcessSafety(unittest.TestCase):
         # millisecond-precision backup timestamps never collide.
         # backup_count is set high so cleanup doesn't delete any backups,
         # allowing us to verify zero-loss across all files.
-        self._spawn_and_wait(
-            n_procs, events_per_proc, max_bytes=5000, backup_count=200
-        )
+        self._spawn_and_wait(n_procs, events_per_proc, max_bytes=5000, backup_count=200)
 
         events = self._collect_all_events()
         expected = n_procs * events_per_proc
@@ -702,20 +700,21 @@ class TestWriterMultiProcessSafety(unittest.TestCase):
         """
         n_procs = 4
         events_per_proc = 30
-        self._spawn_and_wait(
-            n_procs, events_per_proc, max_bytes=5000, backup_count=200
-        )
+        self._spawn_and_wait(n_procs, events_per_proc, max_bytes=5000, backup_count=200)
 
         dir_path = os.path.dirname(self.tmp.name)
         base_name = os.path.basename(self.tmp.name)
 
         # Identify backup files (sorted by name → chronological order)
-        backup_files = sorted([
-            os.path.join(dir_path, f)
-            for f in os.listdir(dir_path)
-            if f.startswith(f"{base_name}.") and not f.endswith(".lock")
-               and os.path.isfile(os.path.join(dir_path, f))
-        ])
+        backup_files = sorted(
+            [
+                os.path.join(dir_path, f)
+                for f in os.listdir(dir_path)
+                if f.startswith(f"{base_name}.")
+                and not f.endswith(".lock")
+                and os.path.isfile(os.path.join(dir_path, f))
+            ]
+        )
 
         # Skip if no rotation happened (nothing to verify)
         if not backup_files:
@@ -780,9 +779,7 @@ class TestWriterMultiProcessSafety(unittest.TestCase):
         n_procs = 6
         events_per_proc = 20
 
-        self._spawn_and_wait(
-            n_procs, events_per_proc, max_bytes=5000, backup_count=200
-        )
+        self._spawn_and_wait(n_procs, events_per_proc, max_bytes=5000, backup_count=200)
 
         events = self._collect_all_events()
         expected = n_procs * events_per_proc
@@ -797,7 +794,8 @@ class TestWriterMultiProcessSafety(unittest.TestCase):
         pids_seen = {e["event_type"].split("_")[0] for e in events}
         for pid in range(n_procs):
             self.assertIn(
-                f"p{pid}", pids_seen,
+                f"p{pid}",
+                pids_seen,
                 f"Process p{pid} has zero events — flock loser path likely broken",
             )
 
@@ -826,9 +824,7 @@ class TestWriterFireAndForget(unittest.TestCase):
 
 class TestWriterThreadSafety(unittest.TestCase):
     def test_concurrent_writes(self):
-        tmp = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".jsonl", delete=False
-        )
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
         tmp.close()
         writer = SecurityEventWriter(path=tmp.name)
 
@@ -844,8 +840,7 @@ class TestWriterThreadSafety(unittest.TestCase):
                 errors.append(e)
 
         threads = [
-            threading.Thread(target=_write_events, args=(t,))
-            for t in range(n_threads)
+            threading.Thread(target=_write_events, args=(t,)) for t in range(n_threads)
         ]
         for t in threads:
             t.start()

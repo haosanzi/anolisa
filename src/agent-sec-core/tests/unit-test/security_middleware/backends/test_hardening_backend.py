@@ -65,15 +65,30 @@ def _mock_proc(stdout, returncode=0):
 class TestBuildCommand(unittest.TestCase):
     def test_scan_mode(self):
         cmd = HardeningBackend._build_command("scan", "agentos_baseline")
-        self.assertEqual(cmd, ["loongshield", "seharden", "--scan", "--config", "agentos_baseline"])
+        self.assertEqual(
+            cmd, ["loongshield", "seharden", "--scan", "--config", "agentos_baseline"]
+        )
 
     def test_reinforce_mode(self):
         cmd = HardeningBackend._build_command("reinforce", "agentos_baseline")
-        self.assertEqual(cmd, ["loongshield", "seharden", "--reinforce", "--config", "agentos_baseline"])
+        self.assertEqual(
+            cmd,
+            ["loongshield", "seharden", "--reinforce", "--config", "agentos_baseline"],
+        )
 
     def test_dryrun_mode(self):
         cmd = HardeningBackend._build_command("dry-run", "agentos_baseline")
-        self.assertEqual(cmd, ["loongshield", "seharden", "--reinforce", "--dry-run", "--config", "agentos_baseline"])
+        self.assertEqual(
+            cmd,
+            [
+                "loongshield",
+                "seharden",
+                "--reinforce",
+                "--dry-run",
+                "--config",
+                "agentos_baseline",
+            ],
+        )
 
     def test_custom_config(self):
         cmd = HardeningBackend._build_command("scan", "custom_cfg")

@@ -7,15 +7,21 @@ from agent_sec_cli.security_middleware import router
 
 class TestModuleToClassName(unittest.TestCase):
     def test_sandbox(self):
-        name = router._module_to_class_name("agent_sec_cli.security_middleware.backends.sandbox")
+        name = router._module_to_class_name(
+            "agent_sec_cli.security_middleware.backends.sandbox"
+        )
         self.assertEqual(name, "SandboxBackend")
 
     def test_asset_verify(self):
-        name = router._module_to_class_name("agent_sec_cli.security_middleware.backends.asset_verify")
+        name = router._module_to_class_name(
+            "agent_sec_cli.security_middleware.backends.asset_verify"
+        )
         self.assertEqual(name, "AssetVerifyBackend")
 
     def test_hardening(self):
-        name = router._module_to_class_name("agent_sec_cli.security_middleware.backends.hardening")
+        name = router._module_to_class_name(
+            "agent_sec_cli.security_middleware.backends.hardening"
+        )
         self.assertEqual(name, "HardeningBackend")
 
     def test_single_word(self):
@@ -52,7 +58,9 @@ class TestRegisterAction(unittest.TestCase):
         router._backend_cache.update(self._original_cache)
 
     def test_register_new_action(self):
-        router.register_action("custom_test", "agent_sec_cli.security_middleware.backends.sandbox")
+        router.register_action(
+            "custom_test", "agent_sec_cli.security_middleware.backends.sandbox"
+        )
         backend = router.get_backend("custom_test")
         self.assertTrue(hasattr(backend, "execute"))
 
@@ -60,7 +68,9 @@ class TestRegisterAction(unittest.TestCase):
         # Pre-cache sandbox_prehook
         b1 = router.get_backend("sandbox_prehook")
         # Re-register should invalidate cache
-        router.register_action("sandbox_prehook", "agent_sec_cli.security_middleware.backends.sandbox")
+        router.register_action(
+            "sandbox_prehook", "agent_sec_cli.security_middleware.backends.sandbox"
+        )
         b2 = router.get_backend("sandbox_prehook")
         # After invalidation, a new instance is created
         self.assertIsNot(b1, b2)

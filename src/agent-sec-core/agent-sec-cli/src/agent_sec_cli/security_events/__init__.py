@@ -7,7 +7,6 @@ Public API
 - ``SecurityEvent``     — the canonical event dataclass
 """
 
-
 from typing import Optional
 
 from agent_sec_cli.security_events.schema import SecurityEvent

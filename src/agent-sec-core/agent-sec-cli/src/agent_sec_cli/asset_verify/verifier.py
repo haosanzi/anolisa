@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Skill integrity verifier - Manifest + PGP signature verification."""
 
-
 import argparse
 import hashlib
 import json

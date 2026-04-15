@@ -1,6 +1,5 @@
 """Abstract base class for all security middleware backends."""
 
-
 from abc import ABC, abstractmethod
 from typing import Any
 

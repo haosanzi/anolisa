@@ -1,6 +1,5 @@
 """Router — action name to backend module registry with lazy imports."""
 
-
 import importlib
 from typing import Any, Dict
 
@@ -10,9 +9,9 @@ from typing import Any, Dict
 
 _REGISTRY: Dict[str, str] = {
     "sandbox_prehook": "agent_sec_cli.security_middleware.backends.sandbox",
-    "harden":          "agent_sec_cli.security_middleware.backends.hardening",
-    "verify":          "agent_sec_cli.security_middleware.backends.asset_verify",
-    "summary":         "agent_sec_cli.security_middleware.backends.summary",
+    "harden": "agent_sec_cli.security_middleware.backends.hardening",
+    "verify": "agent_sec_cli.security_middleware.backends.asset_verify",
+    "summary": "agent_sec_cli.security_middleware.backends.summary",
 }
 
 # Module base name → expected class name convention.
@@ -49,9 +48,7 @@ def get_backend(action: str) -> Any:
     """
     if action not in _REGISTRY:
         registered = ", ".join(sorted(_REGISTRY))
-        raise ValueError(
-            f"Unknown action {action!r}. Registered actions: {registered}"
-        )
+        raise ValueError(f"Unknown action {action!r}. Registered actions: {registered}")
 
     if action in _backend_cache:
         return _backend_cache[action]

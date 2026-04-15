@@ -1,6 +1,5 @@
 """Summary backend — future stub for security event aggregation."""
 
-
 from typing import Any
 
 from agent_sec_cli.security_middleware.backends.base import BaseBackend

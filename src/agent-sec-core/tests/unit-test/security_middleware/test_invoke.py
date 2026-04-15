@@ -31,7 +31,9 @@ class TestInvoke(unittest.TestCase):
     @patch("agent_sec_cli.security_middleware.router.get_backend")
     @patch("agent_sec_cli.security_middleware.lifecycle.on_error")
     @patch("agent_sec_cli.security_middleware.lifecycle.pre_action")
-    def test_invoke_calls_on_error_and_reraises(self, mock_pre, mock_on_err, mock_get_backend):
+    def test_invoke_calls_on_error_and_reraises(
+        self, mock_pre, mock_on_err, mock_get_backend
+    ):
         mock_backend = MagicMock()
         mock_backend.execute.side_effect = RuntimeError("backend boom")
         mock_get_backend.return_value = mock_backend

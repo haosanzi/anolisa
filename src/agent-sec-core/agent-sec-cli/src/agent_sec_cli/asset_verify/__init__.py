@@ -8,7 +8,15 @@ from agent_sec_cli.asset_verify.errors import (
     ErrSigInvalid,
     ErrSigMissing,
 )
-from agent_sec_cli.asset_verify.verifier import compute_file_hash, load_config, load_trusted_keys, run_verification, verify_manifest_hashes, verify_skill, verify_skills_dir
+from agent_sec_cli.asset_verify.verifier import (
+    compute_file_hash,
+    load_config,
+    load_trusted_keys,
+    run_verification,
+    verify_manifest_hashes,
+    verify_skill,
+    verify_skills_dir,
+)
 
 __all__ = [
     "ErrConfigMissing",

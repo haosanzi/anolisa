@@ -1,11 +1,9 @@
 """Lifecycle hooks — transparent pre/post/error logging via security_events."""
 
-
 import copy
 from typing import Any, Dict
 
 from agent_sec_cli.security_events import SecurityEvent, log_event
-
 from agent_sec_cli.security_middleware.context import RequestContext
 from agent_sec_cli.security_middleware.result import ActionResult
 
@@ -15,9 +13,9 @@ from agent_sec_cli.security_middleware.result import ActionResult
 
 _ACTION_CATEGORY: Dict[str, str] = {
     "sandbox_prehook": "sandbox",
-    "harden":          "hardening",
-    "verify":          "asset_verify",
-    "summary":         "summary",
+    "harden": "hardening",
+    "verify": "asset_verify",
+    "summary": "summary",
 }
 
 
@@ -42,7 +40,9 @@ def pre_action(ctx: RequestContext, kwargs: Dict[str, Any]) -> None:
     # Intentionally empty — do not add log_event() here.
 
 
-def post_action(ctx: RequestContext, result: ActionResult, kwargs: Dict[str, Any]) -> None:
+def post_action(
+    ctx: RequestContext, result: ActionResult, kwargs: Dict[str, Any]
+) -> None:
     """Log the single completion event after the backend completes.
 
     Merges *kwargs* (request inputs) and *result.data* (backend outputs) into a

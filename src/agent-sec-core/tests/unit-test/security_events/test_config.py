@@ -3,7 +3,11 @@
 import unittest
 from unittest.mock import patch
 
-from agent_sec_cli.security_events.config import FALLBACK_LOG_PATH, PRIMARY_LOG_PATH, get_log_path
+from agent_sec_cli.security_events.config import (
+    FALLBACK_LOG_PATH,
+    PRIMARY_LOG_PATH,
+    get_log_path,
+)
 
 
 class TestGetLogPath(unittest.TestCase):
@@ -17,7 +21,9 @@ class TestGetLogPath(unittest.TestCase):
     @patch("agent_sec_cli.security_events.config.os.access", return_value=False)
     @patch("agent_sec_cli.security_events.config.Path.is_dir", return_value=True)
     @patch("agent_sec_cli.security_events.config.Path.mkdir")
-    def test_fallback_when_primary_not_writable(self, mock_mkdir, mock_isdir, mock_access):
+    def test_fallback_when_primary_not_writable(
+        self, mock_mkdir, mock_isdir, mock_access
+    ):
         path = get_log_path()
         self.assertEqual(path, FALLBACK_LOG_PATH)
 

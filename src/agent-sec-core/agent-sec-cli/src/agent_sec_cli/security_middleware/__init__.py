@@ -7,7 +7,6 @@ Public API
 - ``RequestContext``             — per-call context (usually internal)
 """
 
-
 import sys
 from pathlib import PurePath
 from typing import List

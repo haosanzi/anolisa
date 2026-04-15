@@ -1,6 +1,5 @@
 """Asset-verify backend — delegates to the asset_verify package."""
 
-
 from typing import Any
 
 from agent_sec_cli.asset_verify import run_verification

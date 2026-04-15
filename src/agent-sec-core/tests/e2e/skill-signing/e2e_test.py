@@ -156,9 +156,9 @@ def test_init(ws: Workspace):
 
     # Public key file must exist
     asc_files = list(ws.trusted_keys.glob("*.asc"))
-    assert len(asc_files) >= 1, (
-        f"No .asc in {ws.trusted_keys}: {list(ws.trusted_keys.iterdir())}"
-    )
+    assert (
+        len(asc_files) >= 1
+    ), f"No .asc in {ws.trusted_keys}: {list(ws.trusted_keys.iterdir())}"
     assert asc_files[0].stat().st_size > 0, "Exported .asc is empty"
 
 
@@ -184,12 +184,12 @@ def test_single_sign_and_verify(ws: Workspace):
     # Manifest must contain our files
     manifest = json.loads((signing / "Manifest.json").read_text())
     paths_in_manifest = {f["path"] for f in manifest["files"]}
-    assert "main.py" in paths_in_manifest, (
-        f"main.py not in manifest: {paths_in_manifest}"
-    )
-    assert "README.md" in paths_in_manifest, (
-        f"README.md not in manifest: {paths_in_manifest}"
-    )
+    assert (
+        "main.py" in paths_in_manifest
+    ), f"main.py not in manifest: {paths_in_manifest}"
+    assert (
+        "README.md" in paths_in_manifest
+    ), f"README.md not in manifest: {paths_in_manifest}"
     # .skill-meta/ contents should NOT be in manifest
     assert "Manifest.json" not in paths_in_manifest
     assert ".skill.sig" not in paths_in_manifest
@@ -272,9 +272,9 @@ def test_skill_name_override(ws: Workspace):
     assert r.returncode == 0
 
     manifest = json.loads((skill / SIGNING_DIR / "Manifest.json").read_text())
-    assert manifest["skill_name"] == "custom-name", (
-        f"Expected 'custom-name', got '{manifest['skill_name']}'"
-    )
+    assert (
+        manifest["skill_name"] == "custom-name"
+    ), f"Expected 'custom-name', got '{manifest['skill_name']}'"
 
 
 def test_hidden_files_excluded(ws: Workspace):
@@ -295,9 +295,9 @@ def test_hidden_files_excluded(ws: Workspace):
     paths = {f["path"] for f in manifest["files"]}
     assert "visible.txt" in paths
     assert ".hidden_file" not in paths, f".hidden_file should be excluded: {paths}"
-    assert ".hidden_dir/inner.txt" not in paths, (
-        f".hidden_dir should be excluded: {paths}"
-    )
+    assert (
+        ".hidden_dir/inner.txt" not in paths
+    ), f".hidden_dir should be excluded: {paths}"
     # .skill-meta dir itself should not appear
     meta_paths = [p for p in paths if p.startswith(".skill-meta")]
     assert not meta_paths, f".skill-meta paths should be excluded: {meta_paths}"
@@ -427,9 +427,9 @@ def test_gpg_private_key_env(ws: Workspace):
         },
     )
     assert r.returncode == 0, f"exit {r.returncode}: {r.stdout}\n{r.stderr}"
-    assert "imported and trusted" in r.stdout + r.stderr, (
-        f"Expected import message: {r.stdout}\n{r.stderr}"
-    )
+    assert (
+        "imported and trusted" in r.stdout + r.stderr
+    ), f"Expected import message: {r.stdout}\n{r.stderr}"
 
     # Verify
     env_trusted = load_trusted_keys(env_keys)

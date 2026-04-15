@@ -11,7 +11,6 @@
     python3 sandbox_policy.py --cwd /workspace "rm -rf /"
 """
 
-
 import json
 import shlex
 from typing import Any, Dict, List, Optional

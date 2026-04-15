@@ -1,6 +1,5 @@
 """Sandbox prehook backend — log sandbox decisions, future: evaluate isolation correctness."""
 
-
 from typing import Any
 
 from agent_sec_cli.security_middleware.backends.base import BaseBackend
