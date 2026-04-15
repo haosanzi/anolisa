@@ -1,6 +1,5 @@
 """SecurityEvent pydantic model — the canonical event envelope."""
 
-from __future__ import annotations
 
 import os
 import uuid

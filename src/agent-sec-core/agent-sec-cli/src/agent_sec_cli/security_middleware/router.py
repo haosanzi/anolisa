@@ -1,6 +1,5 @@
 """Router — action name to backend module registry with lazy imports."""
 
-from __future__ import annotations
 
 import importlib
 from typing import Any, Dict

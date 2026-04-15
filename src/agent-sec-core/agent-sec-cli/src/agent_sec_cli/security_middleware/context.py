@@ -1,6 +1,5 @@
 """RequestContext — per-invocation context propagated through the call chain."""
 
-from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass

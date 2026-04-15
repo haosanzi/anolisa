@@ -1,6 +1,5 @@
 """Lifecycle hooks — transparent pre/post/error logging via security_events."""
 
-from __future__ import annotations
 
 import copy
 from typing import Any, Dict

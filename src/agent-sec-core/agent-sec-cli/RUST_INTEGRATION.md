@@ -32,7 +32,7 @@ This project uses **maturin + PyO3** to embed Rust code directly into the Python
 
 ```bash
 cd agent-sec-cli
-maturin develop --release
+uv run maturin develop --release
 ```
 
 This will:
@@ -44,7 +44,7 @@ This will:
 ### Distribution Build
 
 ```bash
-maturin build --release
+uv run maturin build --release
 ```
 
 Output: `dist/agent_sec_cli-0.3.0-cp312-cp312-linux_x86_64.whl`

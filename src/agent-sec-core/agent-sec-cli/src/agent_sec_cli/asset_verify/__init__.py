@@ -1,6 +1,6 @@
 """Asset verification module for skill integrity checking."""
 
-from .errors import (
+from agent_sec_cli.asset_verify.errors import (
     ErrConfigMissing,
     ErrHashMismatch,
     ErrManifestMissing,
@@ -8,7 +8,7 @@ from .errors import (
     ErrSigInvalid,
     ErrSigMissing,
 )
-from .verifier import compute_file_hash, load_config, load_trusted_keys, run_verification, verify_manifest_hashes, verify_skill, verify_skills_dir
+from agent_sec_cli.asset_verify.verifier import compute_file_hash, load_config, load_trusted_keys, run_verification, verify_manifest_hashes, verify_skill, verify_skills_dir
 
 __all__ = [
     "ErrConfigMissing",

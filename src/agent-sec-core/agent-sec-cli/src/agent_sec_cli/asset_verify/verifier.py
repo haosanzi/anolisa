@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Skill integrity verifier - Manifest + PGP signature verification"""
+"""Skill integrity verifier - Manifest + PGP signature verification."""
+
 
 import argparse
 import hashlib
@@ -15,7 +16,7 @@ try:
 except ImportError:
     pgpy = None
 
-from .errors import (
+from agent_sec_cli.asset_verify.errors import (
     ErrConfigMissing,
     ErrHashMismatch,
     ErrManifestMissing,
@@ -35,7 +36,7 @@ GPG_BIN = shutil.which("gpg") or shutil.which("gpg2")
 SIGNING_DIR = ".skill-meta"
 
 
-def load_config(config_path: Path) -> dict:
+def load_config(config_path: Path) -> dict[str, list[str] | str]:
     """Load verification config file"""
     if not config_path.exists():
         raise ErrConfigMissing(str(config_path))
@@ -199,7 +200,7 @@ def verify_manifest_hashes(skill_dir: str, manifest: dict, skill_name: str) -> N
             raise ErrHashMismatch(skill_name, rel_path, expected_hash, actual_hash)
 
 
-def verify_skill(skill_dir: str, trusted_keys: list) -> tuple:
+def verify_skill(skill_dir: str, trusted_keys: list) -> tuple[bool, str]:
     """Verify a single skill directory"""
     skill_name = os.path.basename(skill_dir)
     signing_dir = os.path.join(skill_dir, SIGNING_DIR)
@@ -222,7 +223,7 @@ def verify_skill(skill_dir: str, trusted_keys: list) -> tuple:
     return True, skill_name
 
 
-def verify_skills_dir(skills_dir: str, trusted_keys: list) -> dict:
+def verify_skills_dir(skills_dir: str, trusted_keys: list) -> dict[str, list]:
     """Verify all skills in a directory"""
     results = {"passed": [], "failed": []}
 
@@ -244,7 +245,7 @@ def verify_skills_dir(skills_dir: str, trusted_keys: list) -> dict:
     return results
 
 
-def run_verification(skill: str | None = None) -> dict:
+def run_verification(skill: str | None = None) -> dict[str, list]:
     """Run verification and return structured results.
 
     Handles the full workflow: load trusted keys, verify single skill or
@@ -275,7 +276,7 @@ def run_verification(skill: str | None = None) -> dict:
     return {"passed": all_passed, "failed": all_failed}
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Verify skill integrity and signatures"
     )

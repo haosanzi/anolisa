@@ -67,15 +67,15 @@ Use backend-skill in folder dev-tools to create a new rust backend called crypto
 **Build**:
 ```bash
 cd agent-sec-cli
-maturin develop --release
+uv run maturin develop --release
 ```
 
 ## Testing
 
 ### Python Backend
 ```bash
-# Unit tests
-pytest src/agent_sec_cli/my_scanner/tests/
+# Unit tests (from agent-sec-core directory)
+make test-python
 
 # E2E through CLI
 agent-sec-cli my_scanner --param1 value
@@ -88,7 +88,7 @@ cd agent-sec-cli
 cargo test
 
 # E2E through CLI
-maturin develop --release
+uv run maturin develop --release
 agent-sec-cli crypto_verify --param1 value
 ```
 
@@ -153,7 +153,7 @@ ModuleNotFoundError: No module named 'agent_sec_cli.my_scanner'
 ```
 ImportError: cannot import name 'xxx' from 'agent_sec_cli._native'
 ```
-**Solution**: Run `maturin develop --release` and ensure function is registered in `#[pymodule]`
+**Solution**: Run `uv run maturin develop --release` and ensure function is registered in `#[pymodule]`
 
 ### Issue: No CLI output
 **Solution**: Ensure `ActionResult` has `stdout` or `error` field populated

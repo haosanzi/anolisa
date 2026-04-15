@@ -1,4 +1,5 @@
-"""Skill verification error definitions"""
+"""Skill verification error definitions."""
+
 
 
 class SkillVerifyError(Exception):
@@ -10,14 +11,14 @@ class SkillVerifyError(Exception):
 class ErrSigMissing(SkillVerifyError):
     code = 10
 
-    def __init__(self, skill_name):
+    def __init__(self, skill_name: str) -> None:
         super().__init__(f"ERR_SIG_MISSING: Missing .skill-meta/.skill.sig in '{skill_name}'")
 
 
 class ErrManifestMissing(SkillVerifyError):
     code = 11
 
-    def __init__(self, skill_name):
+    def __init__(self, skill_name: str) -> None:
         super().__init__(
             f"ERR_MANIFEST_MISSING: Missing .skill-meta/Manifest.json in '{skill_name}'"
         )
@@ -26,7 +27,7 @@ class ErrManifestMissing(SkillVerifyError):
 class ErrSigInvalid(SkillVerifyError):
     code = 12
 
-    def __init__(self, skill_name, detail=""):
+    def __init__(self, skill_name: str, detail: str = "") -> None:
         super().__init__(
             f"ERR_SIG_INVALID: Signature verification failed for '{skill_name}'. {detail}"
         )
@@ -35,7 +36,7 @@ class ErrSigInvalid(SkillVerifyError):
 class ErrHashMismatch(SkillVerifyError):
     code = 13
 
-    def __init__(self, skill_name, file_path, expected, actual):
+    def __init__(self, skill_name: str, file_path: str, expected: str, actual: str) -> None:
         super().__init__(
             f"ERR_HASH_MISMATCH: File hash mismatch for '{file_path}' in '{skill_name}'\n"
             f"  Expected: {expected}\n"
@@ -46,12 +47,12 @@ class ErrHashMismatch(SkillVerifyError):
 class ErrConfigMissing(SkillVerifyError):
     code = 20
 
-    def __init__(self, path):
+    def __init__(self, path: str) -> None:
         super().__init__(f"ERR_CONFIG_MISSING: Config file not found: {path}")
 
 
 class ErrNoTrustedKeys(SkillVerifyError):
     code = 21
 
-    def __init__(self, path):
+    def __init__(self, path: str) -> None:
         super().__init__(f"ERR_NO_TRUSTED_KEYS: No public keys found in '{path}'")

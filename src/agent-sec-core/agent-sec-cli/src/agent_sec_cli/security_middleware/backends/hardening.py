@@ -9,10 +9,13 @@ Output format (verified against loongshield source):
 ANSI colour codes are stripped before parsing.
 """
 
-from __future__ import annotations
 
 import re
 import subprocess
+from typing import Any
+
+from agent_sec_cli.security_middleware.backends.base import BaseBackend
+from agent_sec_cli.security_middleware.context import RequestContext
 from agent_sec_cli.security_middleware.result import ActionResult
 
 # ---------------------------------------------------------------------------
@@ -48,7 +51,7 @@ _ENGINE_ERROR_RE = re.compile(
 )
 
 
-class HardeningBackend:
+class HardeningBackend(BaseBackend):
     """Run ``loongshield seharden`` and parse its summary output."""
 
     # Summary line — captures all 6 counters.
@@ -65,10 +68,10 @@ class HardeningBackend:
 
     def execute(
         self,
-        ctx,
+        ctx: RequestContext,
         mode: str = "scan",
         config: str = "agentos_baseline",
-        **kwargs,
+        **kwargs: Any,
     ) -> ActionResult:
         """Execute loongshield seharden in the requested *mode*.
 

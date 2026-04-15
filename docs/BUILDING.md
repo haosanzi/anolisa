@@ -411,7 +411,7 @@ cd src/copilot-shell && make test
 
 # agent-sec-core
 cd src/agent-sec-core
-pytest tests/integration-test/ tests/unit-test/
+make test-python
 
 # agentsight
 cd src/agentsight && cargo test

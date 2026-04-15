@@ -17,12 +17,10 @@ run_shell() {
 
 run_sec() {
     echo "==> Running agent-sec-core tests"
-    cd "$ROOT_DIR/src/agent-sec-core" || exit 1
-    # Check if pytest is available, else fallback
-    if command -v pytest >/dev/null 2>&1; then
-        pytest tests/integration-test/ tests/unit-test/
+    if command -v uv >/dev/null 2>&1; then
+        make -C "$ROOT_DIR/src/agent-sec-core" test-python
     else
-        echo "pytest not found, skipping sec tests or please install it."
+        echo "uv not found, skipping agent-sec-core Python tests."
     fi
 
     echo "==> Running agent-sec-core e2e test scripts manually"

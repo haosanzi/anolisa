@@ -1,7 +1,7 @@
 # Agent Security Core CLI
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python](https://img.shields.io/badge/Python-3.6+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Version](https://img.shields.io/badge/version-0.3.0-green.svg)](CHANGELOG.md)
 
 **Agent Security Core CLI** is a comprehensive security toolkit for AI Agents, providing system hardening, sandbox isolation, asset integrity verification, and security event tracking.
@@ -45,13 +45,11 @@
 git clone https://github.com/alibaba/anolisa.git
 cd anolisa/src/agent-sec-core/agent-sec-cli
 
-# Install in development mode
-pip install -e .
+# Install in development mode (uv manages .venv automatically)
+uv sync
 
-# Or build and install the wheel
-pip install build
-python -m build
-pip install dist/agent_sec_cli-0.3.0-py3-none-any.whl
+# Or build the wheel
+uv run maturin build --release
 ```
 
 ### From RPM Package
@@ -68,7 +66,8 @@ sudo rpm -i agent-sec-core-0.3.0-1.el8.x86_64.rpm
 ### Dependencies
 
 **Required:**
-- Python 3.6+
+- Python 3.10+
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
 - GnuPG 2.0+
 
 **Optional:**
@@ -160,43 +159,39 @@ agent_sec_cli/
 ### Setup Development Environment
 
 ```bash
-# Clone and install with dev dependencies
-pip install -e ".[dev]"
+# Clone and install all dependencies (dev included by default)
+cd agent-sec-cli && uv sync
 
-# Run tests
-pytest tests/
+# Run tests (from agent-sec-core directory)
+make test-python
 
 # Format code
-black src/
-isort src/
+uv run black src/
+uv run isort src/
 ```
 
 ### Running Tests
 
 ```bash
 # Unit tests
-pytest tests/unit-test/
+uv run --project agent-sec-cli pytest tests/unit-test/
 
 # Integration tests
-pytest tests/integration-test/
+uv run --project agent-sec-cli pytest tests/integration-test/
 
 # All tests with coverage
-pytest --cov=agent_sec_cli tests/
+uv run --project agent-sec-cli pytest --cov=agent_sec_cli tests/
 ```
 
 ### Building from Source
 
 ```bash
-# Install build dependencies
-pip install build wheel setuptools
-
-# Build wheel and sdist
-python -m build
+# Build wheel (maturin + Rust extension)
+uv run maturin build --release
 
 # Output:
-# dist/
-#   ├── agent_sec_cli-0.3.0-py3-none-any.whl
-#   └── agent-sec-cli-0.3.0.tar.gz
+# target/wheels/
+#   └── agent_sec_cli-0.3.0-cp312-cp312-linux_x86_64.whl
 ```
 
 ---
@@ -253,9 +248,6 @@ python -m agent_sec_cli.asset_verify.verifier --skill /path/to/skill
 ## Troubleshooting
 
 ### Common Issues
-
-**Issue:** `ModuleNotFoundError: No module named 'agent_sec_cli'`
-- **Solution:** Ensure the package is installed: `pip install -e .`
 
 **Issue:** `Verification failed: No trusted keys found`
 - **Solution:** Add trusted GPG keys to `asset_verify/trusted-keys/`

@@ -268,7 +268,7 @@ class {BackendName}Backend:
 
 ```bash
 cd agent-sec-cli
-maturin develop --release
+uv run maturin develop --release
 ```
 
 #### 4.4.2 Test from Python

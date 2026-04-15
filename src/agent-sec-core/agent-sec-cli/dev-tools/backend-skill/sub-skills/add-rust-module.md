@@ -233,7 +233,7 @@ serde_json = "1.0"
 ```bash
 # Compile and install
 cd agent-sec-cli
-maturin develop --release
+uv run maturin develop --release
 
 # Run Rust unit tests
 cargo test

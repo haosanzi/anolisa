@@ -1,6 +1,5 @@
 """Thread-safe, rotation-aware JSONL writer for security events."""
 
-from __future__ import annotations
 
 import fcntl
 import json

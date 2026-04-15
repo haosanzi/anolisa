@@ -8,18 +8,14 @@
 # Navigate to the agent-sec-cli directory
 cd src/agent-sec-core/agent-sec-cli
 
-# Create a virtual environment (recommended)
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install maturin
-pip install maturin
+# Install all dependencies (uv manages .venv automatically)
+uv sync
 
 # Build and install in development mode
-maturin develop --release
+uv run maturin develop --release
 
 # Or build wheel package
-maturin build --release
+uv run maturin build --release
 
 # Output files:
 # dist/agent_sec_cli-0.3.0-cp312-cp312-linux_x86_64.whl
@@ -29,10 +25,10 @@ maturin build --release
 
 ```bash
 # From wheel file
-pip install dist/agent_sec_cli-0.3.0-py3-none-any.whl
+uv pip install dist/agent_sec_cli-0.3.0-py3-none-any.whl
 
-# Or install in development mode
-pip install -e .
+# Or install in development mode (recommended)
+uv sync
 ```
 
 ### Usage
@@ -99,7 +95,7 @@ agent-sec-cli/
 
 The package uses modern Python packaging with `pyproject.toml`:
 
-- **Build system**: setuptools >= 61.0
+- **Build system**: maturin >= 1.0 (Rust + Python hybrid)
 - **Package layout**: src/ layout (recommended best practice)
 - **Entry point**: `agent-sec-cli` command → `agent_sec_cli.cli:main`
 - **Package data**: Includes config files and trusted keys
@@ -158,28 +154,28 @@ agent-sec-cli harden --mode scan
 ### Install Development Dependencies
 
 ```bash
-pip install -e ".[dev]"
+uv sync
 ```
 
 ### Run Tests
 
 ```bash
-# Unit tests
-pytest tests/unit-test/
+# Unit tests (from agent-sec-core directory)
+uv run --project agent-sec-cli pytest tests/unit-test/
 
 # Integration tests
-pytest tests/integration-test/
+uv run --project agent-sec-cli pytest tests/integration-test/
 
 # With coverage
-pytest --cov=agent_sec_cli tests/
+uv run --project agent-sec-cli pytest --cov=agent_sec_cli tests/
 ```
 
 ### Code Formatting
 
 ```bash
 # Format code
-black src/
-isort src/
+uv run black src/
+uv run isort src/
 
 # Or use Makefile
 make python-code-pretty
@@ -192,7 +188,7 @@ make python-code-pretty
 ### Build Errors
 
 **Error**: `externally-managed-environment`
-- **Solution**: Use a virtual environment: `python3 -m venv .venv && source .venv/bin/activate`
+- **Solution**: Use uv to manage environment: `uv sync`
 
 **Error**: `ModuleNotFoundError` during build
 - **Solution**: Ensure you're building from the `agent-sec-cli/` directory (not parent)
@@ -203,28 +199,12 @@ make python-code-pretty
 
 ### Import Errors
 
-**Error**: `ModuleNotFoundError: No module named 'agent_sec_cli'`
-- **Solution**: Install the package: `pip install -e .`
-
 **Error**: Import conflicts between old and new structure
 - **Solution**: Remove old `skill/scripts` directory or ensure PYTHONPATH is clean
 
 ---
 
 ## Distribution
-
-### Upload to PyPI (Future)
-
-```bash
-# Install twine
-pip install twine
-
-# Upload to TestPyPI
-twine upload --repository testpypi dist/*
-
-# Upload to PyPI
-twine upload dist/*
-```
 
 ### Include in RPM
 
@@ -255,13 +235,13 @@ agent-sec-cli/
 
 ```bash
 # Build and install in development mode
-maturin develop --release
+uv run maturin develop --release
 
 # Build wheel for distribution
-maturin build --release
+uv run maturin build --release
 
 # Build for specific Python version
-maturin build --release -i python3.11
+uv run maturin build --release -i python3.11
 
 # Run Rust tests
 cargo test

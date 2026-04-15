@@ -5,8 +5,8 @@
 .PHONY: python-code-pretty
 python-code-pretty: ## Format Python code using black and isort
 	@echo "🎨 Formatting code with black and isort..."
-	@uv run --with isort isort --profile black .
-	@uv run --with black black .
+	@uv run --project agent-sec-cli isort --profile black .
+	@uv run --project agent-sec-cli black .
 
 # =============================================================================
 # TEST
@@ -15,17 +15,8 @@ python-code-pretty: ## Format Python code using black and isort
 .PHONY: test-python
 test-python: ## Run Python unit and integration tests
 	@echo "🧪 Running Python tests..."
-	@if [ ! -d ".venv" ]; then \
-		echo "Creating virtual environment..."; \
-		python3 -m venv .venv; \
-	fi
-	. .venv/bin/activate && \
-		pip install -q -e "agent-sec-cli[dev]" && \
-		pytest tests/integration-test/ tests/unit-test/ -v
-
-.PHONY: clean-venv
-clean-venv: ## Remove virtual environment
-	rm -rf .venv
+	cd agent-sec-cli && uv sync
+	uv run --project agent-sec-cli pytest tests/ --ignore=tests/e2e -v
 
 .PHONY: test-rust
 test-rust: ## Run Rust sandbox tests
@@ -45,8 +36,11 @@ build-sandbox: ## Build linux-sandbox binary
 
 .PHONY: build-cli
 build-cli: ## Build agent-sec-cli wheel with maturin (Rust + Python)
-	pip3 install maturin
-	cd agent-sec-cli && maturin build --release
+	cd agent-sec-cli && uv run maturin build --release
+
+.PHONY: setup
+setup: ## Install all dependencies (including dev), create .venv
+	cd agent-sec-cli && uv sync
 
 # =============================================================================
 # INSTALL

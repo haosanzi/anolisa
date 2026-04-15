@@ -1,6 +1,5 @@
 """ActionResult — unified return type for all backend executions."""
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 

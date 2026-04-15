@@ -11,18 +11,19 @@
     python3 sandbox_policy.py --cwd /workspace "rm -rf /"
 """
 
+
 import json
 import shlex
 from typing import Any, Dict, List, Optional
 
-from classify_command import CommandClassifier
+from agent_sec_cli.sandbox.classify_command import CommandClassifier
 
 # ============================================================================
 # linux-sandbox FileSystemSandboxPolicy JSON 构建
 # ============================================================================
 
 
-def _special_entry(kind: str, access: str) -> dict:
+def _special_entry(kind: str, access: str) -> dict[str, Any]:
     """构建 Special 类型的 FileSystemSandboxEntry。"""
     return {
         "path": {"type": "special", "value": {"kind": kind}},
@@ -30,7 +31,7 @@ def _special_entry(kind: str, access: str) -> dict:
     }
 
 
-def _absolute_path_entry(path: str, access: str) -> dict:
+def _absolute_path_entry(path: str, access: str) -> dict[str, Any]:
     """构建绝对路径类型的 FileSystemSandboxEntry。"""
     return {
         "path": {"type": "path", "path": path},
@@ -213,7 +214,7 @@ def generate_sandbox_policy(command: str, cwd: str) -> Dict[str, Any]:
     return SandboxPolicyBuilder.build(classification, cwd)
 
 
-def main():
+def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(

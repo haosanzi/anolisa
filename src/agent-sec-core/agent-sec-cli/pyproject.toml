@@ -8,13 +8,10 @@ version = "0.3.0"
 description = "Agent Security Core CLI - System hardening, sandbox isolation, and asset integrity verification for AI Agents"
 readme = "README.md"
 license = {text = "Apache-2.0"}
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 authors = [
     {name = "YiZheng Yang", email = "YiZheng.Yang@linux.alibaba.com"},
     {name = "Xingdong Li", email = "XingDong.Li@linux.alibaba.com"},
-]
-maintainers = [
-    {name = "ANOLISA Team", email = "anolisa@lists.openanolis.cn"},
 ]
 keywords = ["security", "agent", "hardening", "sandbox", "integrity", "verification"]
 classifiers = [
@@ -23,9 +20,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -42,11 +36,15 @@ dependencies = [
 
 [project.optional-dependencies]
 pgpy = ["pgpy>=0.5"]
+
+[dependency-groups]
 dev = [
     "black",
     "isort",
-    "pytest",
+    "maturin>=1.0,<2.0",
+    "pytest>=7.0",
     "pytest-cov",
+    "ruff",
 ]
 
 [project.scripts]
@@ -72,14 +70,12 @@ module-name = "agent_sec_cli._native"
 
 [tool.black]
 line-length = 100
-target-version = ["py37"]
+target-version = ["py310"]
 
 [tool.isort]
 profile = "black"
 line_length = 100
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+

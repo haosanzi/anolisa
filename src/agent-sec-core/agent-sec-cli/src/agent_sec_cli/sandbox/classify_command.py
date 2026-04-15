@@ -15,6 +15,7 @@
     python3 classify_command.py --json "rm -rf /"
 """
 
+
 import json
 import re
 import shlex
@@ -22,7 +23,7 @@ import sys
 from pathlib import PurePath
 from typing import Any, Dict, List, Optional, Tuple
 
-from rules import (
+from agent_sec_cli.sandbox.rules import (
     DANGEROUS_RULES,
     DESTRUCTIVE_RULES,
     PERMISSION_RULES,
@@ -125,7 +126,7 @@ class RuleEngine:
 
 
 class CommandClassifier:
-    def __init__(self):
+    def __init__(self) -> None:
         self.engine = RuleEngine()
 
     @staticmethod

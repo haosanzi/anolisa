@@ -7,7 +7,6 @@ Public API
 - ``SecurityEvent``     — the canonical event dataclass
 """
 
-from __future__ import annotations
 
 from typing import Optional
 

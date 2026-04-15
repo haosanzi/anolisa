@@ -1,11 +1,14 @@
 """Sandbox prehook backend — log sandbox decisions, future: evaluate isolation correctness."""
 
-from __future__ import annotations
 
+from typing import Any
+
+from agent_sec_cli.security_middleware.backends.base import BaseBackend
+from agent_sec_cli.security_middleware.context import RequestContext
 from agent_sec_cli.security_middleware.result import ActionResult
 
 
-class SandboxBackend:
+class SandboxBackend(BaseBackend):
     """Record sandbox decisions for auditing.
 
     Currently logging-only (the lifecycle layer handles event emission).
@@ -14,13 +17,13 @@ class SandboxBackend:
 
     def execute(
         self,
-        ctx,
+        ctx: RequestContext,
         decision: str = "",
         command: str = "",
         reasons: str = "",
         network_policy: str = "",
         cwd: str = "",
-        **kwargs,
+        **kwargs: Any,
     ) -> ActionResult:
         """Record sandbox decision.  Currently logging-only (via lifecycle).
 

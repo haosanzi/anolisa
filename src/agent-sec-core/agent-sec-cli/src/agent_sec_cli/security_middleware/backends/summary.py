@@ -1,18 +1,21 @@
 """Summary backend — future stub for security event aggregation."""
 
-from __future__ import annotations
 
+from typing import Any
+
+from agent_sec_cli.security_middleware.backends.base import BaseBackend
+from agent_sec_cli.security_middleware.context import RequestContext
 from agent_sec_cli.security_middleware.result import ActionResult
 
 
-class SummaryBackend:
+class SummaryBackend(BaseBackend):
     """Placeholder for security event summary and reporting.
 
     This backend will eventually aggregate events from the JSONL log
     and produce time-windowed, categorised reports.
     """
 
-    def execute(self, ctx, **kwargs) -> ActionResult:
+    def execute(self, ctx: RequestContext, **kwargs: Any) -> ActionResult:
         """Not yet implemented — always returns failure."""
         return ActionResult(
             success=False,
