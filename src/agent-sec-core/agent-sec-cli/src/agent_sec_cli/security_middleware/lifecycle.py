@@ -16,6 +16,7 @@ _ACTION_CATEGORY: Dict[str, str] = {
     "harden": "hardening",
     "verify": "asset_verify",
     "summary": "summary",
+    "code_scan": "code_scan",
 }
 
 
