@@ -36,7 +36,7 @@ build-sandbox: ## Build linux-sandbox binary
 
 .PHONY: build-cli
 build-cli: ## Build agent-sec-cli wheel with maturin (Rust + Python)
-	cd agent-sec-cli && uv run maturin build --release
+	cd agent-sec-cli && uv run maturin build --release -i python3.11
 
 .PHONY: setup
 setup: ## Install all dependencies (including dev), create .venv

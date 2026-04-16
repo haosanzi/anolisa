@@ -32,6 +32,7 @@
 - 所有 import 使用绝对路径: `from agent_sec_cli.xxx import yyy`
 - 禁止使用相对导入 (`from .xxx import`) 或裸导入 (`from xxx import`)
 - 禁止运行时动态导入 (`importlib.import_module()`、`__import__()`)
+- 禁止在函数体内导入，所有 import 必须在文件头部引入
 
 ## 4. 类型注解
 

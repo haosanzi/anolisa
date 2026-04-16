@@ -116,6 +116,7 @@ agent-sec-core/
 │   ├── src/agent_sec_cli/     # 主 Python 包
 │   │   ├── cli.py             # CLI 入口点（Typer）
 │   │   ├── asset_verify/      # Skill 签名 + 哈希校验
+│   │   ├── code_scanner/      # 代码安全扫描引擎
 │   │   ├── sandbox/           # 沙箱策略生成
 │   │   ├── security_events/   # JSONL 事件日志
 │   │   └── security_middleware/ # 中间层 + 后端实现

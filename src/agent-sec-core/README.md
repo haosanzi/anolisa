@@ -116,6 +116,7 @@ agent-sec-core/
 │   ├── src/agent_sec_cli/     # Main Python package
 │   │   ├── cli.py             # CLI entry point (Typer)
 │   │   ├── asset_verify/      # Skill signature + hash verification
+│   │   ├── code_scanner/      # Code security scanning engine
 │   │   ├── sandbox/           # Sandbox policy generation
 │   │   ├── security_events/   # JSONL event logging
 │   │   └── security_middleware/ # Middleware layer + backends
