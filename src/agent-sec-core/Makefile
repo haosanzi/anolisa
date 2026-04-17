@@ -38,6 +38,9 @@ build-sandbox: ## Build linux-sandbox binary
 build-cli: ## Build agent-sec-cli wheel with maturin (Rust + Python)
 	cd agent-sec-cli && uv run maturin build --release -i python3.11
 
+.PHONY: build-all
+build-all: build-sandbox build-cli ## Build all components
+
 .PHONY: setup
 setup: ## Install all dependencies (including dev), create .venv
 	cd agent-sec-cli && uv sync
@@ -54,7 +57,7 @@ build-all: build-sandbox build-cli build-openclaw-plugin ## Build all components
 # =============================================================================
 
 PREFIX             ?= /usr/local
-SKILL_DIR          ?= /usr/share/anolisa/skills/agent-sec-core
+SKILL_DIR          ?= /usr/share/anolisa/skills
 OPENCLAW_PLUGIN_DIR ?= /opt/agent-sec/openclaw-plugin
 
 .PHONY: install-sandbox
@@ -62,17 +65,22 @@ install-sandbox: ## Install linux-sandbox binary only
 	install -d -m 0755 $(DESTDIR)$(PREFIX)/bin
 	install -p -m 0755 linux-sandbox/target/release/linux-sandbox $(DESTDIR)$(PREFIX)/bin/
 
-.PHONY: install
-install: ## Install linux-sandbox binary, sign-skill.sh and skill files
+.PHONY: install-tool
+install-tool: ## Install sign-skill.sh to PREFIX/bin
 	install -d -m 0755 $(DESTDIR)$(PREFIX)/bin
-	install -p -m 0755 linux-sandbox/target/release/linux-sandbox $(DESTDIR)$(PREFIX)/bin/
 	install -p -m 0755 tools/sign-skill.sh $(DESTDIR)$(PREFIX)/bin/
-	pip3 install --root=$(DESTDIR) --no-deps --no-cache-dir --prefix=/usr \
-		agent-sec-cli/target/wheels/agent_sec_cli-*.whl
-	install -d -m 0755 $(DESTDIR)$(SKILL_DIR)/scripts
-	install -d -m 0755 $(DESTDIR)$(SKILL_DIR)/references
-	cp -rp skill/references/* $(DESTDIR)$(SKILL_DIR)/references/
-	cp skill/SKILL.md $(DESTDIR)$(SKILL_DIR)/
+
+.PHONY: install
+install: install-all ## Install all components (alias for install-all)
+
+.PHONY: install-cli
+install-cli: ## Install agent-sec-cli wheel
+	pip3 install agent-sec-cli/target/wheels/agent_sec_cli-*.whl
+
+.PHONY: install-skills
+install-skills: ## Install skill files to SKILL_DIR
+	install -d -m 0755 $(DESTDIR)$(SKILL_DIR)
+	cp -rp skills/. $(DESTDIR)$(SKILL_DIR)/
 	find $(DESTDIR)$(SKILL_DIR) -type f -name '*.sh' -exec chmod 0755 {} +
 	find $(DESTDIR)$(SKILL_DIR) -type f -name '*.py' -exec chmod 0755 {} +
 
@@ -88,7 +96,7 @@ install-openclaw-plugin: ## Install openclaw-plugin to target directory
 	chmod 0755 $(DESTDIR)$(OPENCLAW_PLUGIN_DIR)/scripts/*.sh
 
 .PHONY: install-all
-install-all: install install-openclaw-plugin ## Install all components
+install-all: install-sandbox install-cli install-skills install-tool install-openclaw-plugin ## Install all components
 
 .PHONY: help
 help: ## Show this help message
