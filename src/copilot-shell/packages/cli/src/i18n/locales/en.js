@@ -1044,6 +1044,15 @@ export default {
     'Failed to authenticate. Message: {{message}}',
   'Authenticated successfully with {{authType}} credentials.':
     'Authenticated successfully with {{authType}} credentials.',
+  // OpenAI API key validation errors
+  'Invalid API key. Please check your API key and try again.':
+    'Invalid API key. Please check your API key and try again.',
+  'API key does not have permission to access this resource.':
+    'API key does not have permission to access this resource.',
+  'Rate limit exceeded. Please check your quota.':
+    'Rate limit exceeded. Please check your quota.',
+  'Model "{{model}}" is not available. Please check if the model name is correct.':
+    'Model "{{model}}" is not available. Please check if the model name is correct.',
   'Invalid QWEN_DEFAULT_AUTH_TYPE value: "{{value}}". Valid values are: {{validValues}}':
     'Invalid QWEN_DEFAULT_AUTH_TYPE value: "{{value}}". Valid values are: {{validValues}}',
   'Custom Provider Configuration Required':

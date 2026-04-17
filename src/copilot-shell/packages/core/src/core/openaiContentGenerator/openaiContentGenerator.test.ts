@@ -34,7 +34,7 @@ import type {
   CountTokensParameters,
 } from '@google/genai';
 import type { OpenAICompatibleProvider } from './provider/index.js';
-import type OpenAI from 'openai';
+import OpenAI from 'openai';
 
 describe('OpenAIContentGenerator (Refactored)', () => {
   let generator: OpenAIContentGenerator;
@@ -160,6 +160,109 @@ describe('OpenAIContentGenerator (Refactored)', () => {
     it('should delegate to pipeline.client.embeddings.create', async () => {
       // This test verifies the method exists and can be called
       expect(typeof generator.embedContent).toBe('function');
+    });
+  });
+
+  describe('validateApiKey', () => {
+    let mockOpenAIClient: {
+      models: {
+        retrieve: ReturnType<typeof vi.fn>;
+      };
+    };
+
+    beforeEach(() => {
+      // Create mock OpenAI client with models.retrieve
+      mockOpenAIClient = {
+        models: {
+          retrieve: vi.fn(),
+        },
+      };
+
+      // Update mockProvider.buildClient to return the mock client
+      const mockProvider = generator['pipeline']['config']['provider'];
+      mockProvider.buildClient = vi.fn().mockReturnValue(mockOpenAIClient);
+    });
+
+    it('should resolve when API key and model are valid', async () => {
+      mockOpenAIClient.models.retrieve.mockResolvedValue({
+        id: 'gpt-4',
+        object: 'model',
+        created: 1234567890,
+        owned_by: 'openai',
+      });
+
+      await expect(generator.validateApiKey()).resolves.toBeUndefined();
+      expect(mockOpenAIClient.models.retrieve).toHaveBeenCalledWith('gpt-4');
+    });
+
+    it('should reject with model-not-found error when model returns 404', async () => {
+      // Create a real OpenAI.APIError instance for 404
+      const mockError = new OpenAI.APIError(
+        404,
+        {},
+        'Model not found',
+        undefined,
+      );
+      mockOpenAIClient.models.retrieve.mockRejectedValue(mockError);
+
+      await expect(generator.validateApiKey()).rejects.toThrow(
+        'Model "gpt-4" is not available. Please check if the model name is correct.',
+      );
+    });
+
+    it('should reject with invalid API key error when model returns 401', async () => {
+      // Create a real OpenAI.APIError instance for 401
+      const mockError = new OpenAI.APIError(401, {}, 'Unauthorized', undefined);
+      mockOpenAIClient.models.retrieve.mockRejectedValue(mockError);
+
+      await expect(generator.validateApiKey()).rejects.toThrow(
+        'Invalid API key. Please check your API key and try again.',
+      );
+    });
+
+    it('should reject with permission error when model returns 403', async () => {
+      // Create a real OpenAI.APIError instance for 403
+      const mockError = new OpenAI.APIError(403, {}, 'Forbidden', undefined);
+      mockOpenAIClient.models.retrieve.mockRejectedValue(mockError);
+
+      await expect(generator.validateApiKey()).rejects.toThrow(
+        'API key does not have permission to access this resource.',
+      );
+    });
+
+    it('should reject with rate limit error when model returns 429', async () => {
+      // Create a real OpenAI.APIError instance for 429
+      const mockError = new OpenAI.APIError(
+        429,
+        {},
+        'Rate limit exceeded',
+        undefined,
+      );
+      mockOpenAIClient.models.retrieve.mockRejectedValue(mockError);
+
+      await expect(generator.validateApiKey()).rejects.toThrow(
+        'Rate limit exceeded. Please check your quota.',
+      );
+    });
+
+    it('should reject with generic error for other API errors', async () => {
+      // Create a real OpenAI.APIError instance for 500
+      // Note: OpenAI.APIError message is auto-generated as "${status} ${JSON.stringify(error)}"
+      const mockError = new OpenAI.APIError(500, {}, undefined, undefined);
+      mockOpenAIClient.models.retrieve.mockRejectedValue(mockError);
+
+      await expect(generator.validateApiKey()).rejects.toThrow(
+        'API validation failed: 500 {}',
+      );
+    });
+
+    it('should reject with generic error for non-API errors', async () => {
+      const mockError = new Error('Network connection failed');
+      mockOpenAIClient.models.retrieve.mockRejectedValue(mockError);
+
+      await expect(generator.validateApiKey()).rejects.toThrow(
+        'Authentication failed: Network connection failed',
+      );
     });
   });
 

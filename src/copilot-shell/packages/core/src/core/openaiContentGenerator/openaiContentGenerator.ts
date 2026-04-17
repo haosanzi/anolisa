@@ -15,6 +15,7 @@ import { EnhancedErrorHandler } from './errorHandler.js';
 import { RequestTokenEstimator } from '../../utils/request-tokenizer/index.js';
 import type { ContentGeneratorConfig } from '../contentGenerator.js';
 import { isAbortError } from '../../utils/errors.js';
+import OpenAI from 'openai';
 
 export class OpenAIContentGenerator implements ContentGenerator {
   protected pipeline: ContentGenerationPipeline;
@@ -60,6 +61,84 @@ export class OpenAIContentGenerator implements ContentGenerator {
     }
 
     return false;
+  }
+
+  /**
+   * Validate API key and model availability by calling models.retrieve() API.
+   * This validates:
+   * 1. API key is valid (returns 401 if invalid)
+   * 2. Configured model is available (returns 404 if model not found)
+   * Uses models.retrieve() to directly check the specific model, avoiding
+   * pagination issues with models.list() when providers have many models.
+   * @returns Promise<void> - resolves if both valid, rejects if either invalid
+   */
+  async validateApiKey(): Promise<void> {
+    try {
+      const openai = this.pipeline.getProvider().buildClient();
+      const model = this.pipeline.getContentGeneratorConfig().model;
+
+      // Use models.retrieve() to directly check if the specific model exists
+      // This avoids pagination issues with models.list() when providers have many models
+      // models.retrieve() is also lightweight and doesn't consume tokens
+      try {
+        await openai.models.retrieve(model);
+        // If we get here, both API key and model are valid
+        return Promise.resolve();
+      } catch (retrieveError) {
+        // Check if it's a model-not-found error (404)
+        if (retrieveError instanceof OpenAI.APIError) {
+          if (retrieveError.status === 404) {
+            // Model not found - return specific error
+            return Promise.reject(
+              new Error(
+                `Model "${model}" is not available. Please check if the model name is correct.`,
+              ),
+            );
+          }
+          // Other errors (401, 403, 429, etc.) - format and throw
+          return Promise.reject(this.formatAuthError(retrieveError));
+        }
+        // Non-API error (network, etc.) - format and throw
+        return Promise.reject(this.formatAuthError(retrieveError));
+      }
+    } catch (error) {
+      // Error during client creation or other setup
+      return Promise.reject(this.formatAuthError(error));
+    }
+  }
+
+  /**
+   * Get the content generator configuration (for accessing model name)
+   */
+  getContentGeneratorConfig(): ContentGeneratorConfig {
+    return this.pipeline.getContentGeneratorConfig();
+  }
+
+  /**
+   * Format authentication error messages for user-friendly display
+   * @param error The error from API call
+   * @returns Formatted Error with user-friendly message
+   */
+  private formatAuthError(error: unknown): Error {
+    if (error instanceof OpenAI.APIError) {
+      if (error.status === 401) {
+        return new Error(
+          'Invalid API key. Please check your API key and try again.',
+        );
+      }
+      if (error.status === 403) {
+        return new Error(
+          'API key does not have permission to access this resource.',
+        );
+      }
+      if (error.status === 429) {
+        return new Error('Rate limit exceeded. Please check your quota.');
+      }
+      return new Error(`API validation failed: ${error.message}`);
+    }
+    return new Error(
+      `Authentication failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
   async generateContent(

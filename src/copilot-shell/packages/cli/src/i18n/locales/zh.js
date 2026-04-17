@@ -989,6 +989,15 @@ export default {
   'Failed to authenticate. Message: {{message}}': '认证失败。消息：{{message}}',
   'Authenticated successfully with {{authType}} credentials.':
     '使用 {{authType}} 凭据成功认证。',
+  // OpenAI API key validation errors
+  'Invalid API key. Please check your API key and try again.':
+    '无效的 API 密钥。请检查您的 API 密钥并重试。',
+  'API key does not have permission to access this resource.':
+    'API 密钥没有访问此资源的权限。',
+  'Rate limit exceeded. Please check your quota.':
+    '超出速率限制。请检查您的配额。',
+  'Model "{{model}}" is not available. Please check if the model name is correct.':
+    '模型 "{{model}}" 不可用。请检查模型名称是否正确。',
   'Invalid QWEN_DEFAULT_AUTH_TYPE value: "{{value}}". Valid values are: {{validValues}}':
     '无效的 QWEN_DEFAULT_AUTH_TYPE 值："{{value}}"。有效值为：{{validValues}}',
   'Custom Provider Configuration Required': '需要配置 OpenAI',

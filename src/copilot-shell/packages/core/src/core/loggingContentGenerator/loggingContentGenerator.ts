@@ -423,6 +423,31 @@ export class LoggingContentGenerator implements ContentGenerator {
     return this.wrapped.useSummarizedThinking();
   }
 
+  /**
+   * Validate API key by delegating to wrapped generator
+   * Only available if wrapped generator implements validateApiKey
+   */
+  async validateApiKey(): Promise<void> {
+    if (this.wrapped && typeof this.wrapped.validateApiKey === 'function') {
+      return await this.wrapped.validateApiKey();
+    }
+    // If wrapped generator doesn't implement validateApiKey, just return (no validation)
+    return Promise.resolve();
+  }
+
+  /**
+   * Get the content generator configuration (for accessing model name)
+   */
+  getContentGeneratorConfig(): ContentGeneratorConfig | undefined {
+    if (
+      this.wrapped &&
+      typeof this.wrapped.getContentGeneratorConfig === 'function'
+    ) {
+      return this.wrapped.getContentGeneratorConfig();
+    }
+    return undefined;
+  }
+
   private toContents(contents: ContentListUnion): Content[] {
     if (Array.isArray(contents)) {
       // it's a Content[] or a PartsUnion[]

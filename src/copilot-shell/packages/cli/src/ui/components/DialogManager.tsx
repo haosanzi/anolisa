@@ -344,7 +344,15 @@ export const DialogManager = ({
     return <ModelSwitchDialog onSelect={uiActions.handleVisionSwitchSelect} />;
   }
 
-  if (uiState.isAuthDialogOpen || uiState.authError) {
+  // For OpenAI authentication, show errors in OpenAIKeyPrompt instead of AuthDialog
+  // So we check if user is authenticating with OpenAI before rendering AuthDialog
+  const isOpenAIAuthenticating =
+    uiState.isAuthenticating && uiState.pendingAuthType === AuthType.USE_OPENAI;
+
+  if (
+    uiState.isAuthDialogOpen ||
+    (uiState.authError && !isOpenAIAuthenticating)
+  ) {
     return (
       <Box flexDirection="column">
         <AuthDialog />
@@ -432,6 +440,8 @@ export const DialogManager = ({
       return (
         <OpenAIKeyPrompt
           onSubmit={(apiKey, baseUrl, model) => {
+            // Clear previous auth error before submitting new credentials
+            uiActions.onAuthError(null);
             uiActions.handleAuthSelect(AuthType.USE_OPENAI, {
               apiKey,
               baseUrl,
@@ -445,6 +455,7 @@ export const DialogManager = ({
           defaultApiKey={defaults.apiKey}
           defaultBaseUrl={defaults.baseUrl}
           defaultModel={defaults.model}
+          authError={uiState.authError}
         />
       );
     }

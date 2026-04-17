@@ -136,6 +136,8 @@ interface OpenAIKeyPromptProps {
   defaultApiKey?: string;
   defaultBaseUrl?: string;
   defaultModel?: string;
+  /** Authentication error message to display (from API key validation) */
+  authError?: string | null;
 }
 
 /**
@@ -178,6 +180,7 @@ export function OpenAIKeyPrompt({
   defaultApiKey,
   defaultBaseUrl,
   defaultModel,
+  authError,
 }: OpenAIKeyPromptProps): React.JSX.Element {
   // Detect initial provider & subProvider indices from defaultBaseUrl
   const detectInitialIndices = (): [number, number] => {
@@ -489,6 +492,11 @@ export function OpenAIKeyPrompt({
       {validationError && (
         <Box marginTop={1}>
           <Text color={Colors.AccentRed}>{validationError}</Text>
+        </Box>
+      )}
+      {authError && !validationError && (
+        <Box marginTop={1}>
+          <Text color={Colors.AccentRed}>{authError}</Text>
         </Box>
       )}
 

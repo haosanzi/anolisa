@@ -50,6 +50,18 @@ export interface ContentGenerator {
   embedContent(request: EmbedContentParameters): Promise<EmbedContentResponse>;
 
   useSummarizedThinking(): boolean;
+
+  /**
+   * Validate API key and model availability by making a lightweight API call (OpenAI providers only)
+   * @returns Promise<void> - resolves if valid, rejects if invalid
+   */
+  validateApiKey?(): Promise<void>;
+
+  /**
+   * Get the content generator configuration (for accessing model name)
+   * @returns ContentGeneratorConfig or undefined (if not available)
+   */
+  getContentGeneratorConfig?(): ContentGeneratorConfig | undefined;
 }
 
 export enum AuthType {

@@ -69,18 +69,43 @@ export const useAuthCommand = (
     [setAuthError, setAuthState],
   );
 
+  /**
+   * Translate authentication error messages for i18n support.
+   * Matches known error patterns and returns translated messages.
+   */
+  const translateAuthError = useCallback((error: unknown): string => {
+    const message = getErrorMessage(error);
+
+    // Try to match the message with known error patterns for i18n
+    if (message.includes('Invalid API key')) {
+      return t('Invalid API key. Please check your API key and try again.');
+    }
+    if (message.includes('does not have permission')) {
+      return t('API key does not have permission to access this resource.');
+    }
+    if (message.includes('Rate limit exceeded')) {
+      return t('Rate limit exceeded. Please check your quota.');
+    }
+    if (message.includes('is not available')) {
+      // Extract model name from message: Model "xxx" is not available
+      const modelMatch = message.match(/Model "([^"]+)" is not available/);
+      if (modelMatch) {
+        return t(
+          'Model "{{model}}" is not available. Please check if the model name is correct.',
+          { model: modelMatch[1] },
+        );
+      }
+    }
+
+    // Fallback: use the original message
+    return message;
+  }, []);
+
   const handleAuthFailure = useCallback(
     (error: unknown) => {
-      setIsAuthenticating(false);
-      setShowBashOptionInAuthDialog(false);
-      setIsAuthDialogOpen(true); // Reopen dialog to show error
-
       const errorMessage = t('Failed to authenticate. Message: {{message}}', {
-        message: getErrorMessage(error),
+        message: translateAuthError(error),
       });
-
-      setAuthError(errorMessage); // Set the error state
-      onAuthError(errorMessage); // Also call the external error handler
 
       // Log authentication failure
       if (pendingAuthType) {
@@ -92,8 +117,23 @@ export const useAuthCommand = (
         );
         logAuth(config, authEvent);
       }
+
+      // For OpenAI auth, keep OpenAIKeyPrompt open to show error
+      // by NOT calling onAuthError which would open AuthDialog
+      if (pendingAuthType === AuthType.USE_OPENAI) {
+        // Only set authError state, don't open AuthDialog
+        // OpenAIKeyPrompt will read authError from UIStateContext and display it
+        setAuthError(errorMessage);
+        // Keep isAuthenticating=true so OpenAIKeyPrompt stays open
+        // User can press Escape to cancel and go back to AuthDialog
+      } else {
+        // For other auth types, use onAuthError which opens AuthDialog
+        setIsAuthenticating(false);
+        setShowBashOptionInAuthDialog(false);
+        onAuthError(errorMessage);
+      }
     },
-    [onAuthError, pendingAuthType, config],
+    [translateAuthError, onAuthError, pendingAuthType, config],
   );
 
   const handleAuthSuccess = useCallback(
@@ -196,7 +236,24 @@ export const useAuthCommand = (
   const performAuth = useCallback(
     async (authType: AuthType, credentials?: OpenAICredentials) => {
       try {
+        // Refresh authentication (creates ContentGenerator)
         await config.refreshAuth(authType);
+
+        // Validate API key for OpenAI auth by making a lightweight API call
+        // This validates both new credentials and existing saved credentials
+        if (authType === AuthType.USE_OPENAI) {
+          const contentGenerator = config.getContentGenerator();
+          // Check if validateApiKey method exists (it's optional on ContentGenerator interface)
+          // LoggingContentGenerator wraps OpenAIContentGenerator, so we check the method existence
+          if (
+            contentGenerator &&
+            typeof contentGenerator.validateApiKey === 'function'
+          ) {
+            await contentGenerator.validateApiKey();
+          }
+        }
+
+        // If we get here, authentication and validation succeeded
         handleAuthSuccess(authType, credentials);
       } catch (e) {
         handleAuthFailure(e);
@@ -263,6 +320,8 @@ export const useAuthCommand = (
       setIsAuthenticating(true);
 
       if (authType === AuthType.USE_OPENAI) {
+        // Only perform authentication when credentials are provided (from OpenAIKeyPrompt)
+        // When credentials are undefined, DialogManager will show OpenAIKeyPrompt for user input
         if (credentials && 'apiKey' in credentials) {
           // Pass settings.model.generationConfig to updateCredentials so it can be merged
           // after clearing provider-sourced config. This ensures settings.json generationConfig
@@ -279,6 +338,8 @@ export const useAuthCommand = (
           );
           await performAuth(authType, credentials as OpenAICredentials);
         }
+        // If no credentials, just set pendingAuthType and isAuthenticating state
+        // DialogManager will show OpenAIKeyPrompt for user to input credentials
         return;
       }
 

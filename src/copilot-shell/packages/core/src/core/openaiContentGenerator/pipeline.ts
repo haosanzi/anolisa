@@ -36,6 +36,20 @@ export class ContentGenerationPipeline {
     );
   }
 
+  /**
+   * Get the OpenAI-compatible provider for this pipeline
+   */
+  getProvider(): OpenAICompatibleProvider {
+    return this.config.provider;
+  }
+
+  /**
+   * Get the content generator configuration (for accessing model name)
+   */
+  getContentGeneratorConfig(): ContentGeneratorConfig {
+    return this.contentGeneratorConfig;
+  }
+
   async execute(
     request: GenerateContentParameters,
     userPromptId: string,
