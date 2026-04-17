@@ -1,6 +1,7 @@
 import re
 from typing import List
 
+from agent_sec_cli.code_scanner.errors import ErrRegexCompile
 from agent_sec_cli.code_scanner.models import Finding, Language, RuleDefinition
 
 _SEGMENT_SPLIT = re.compile(r"[;\n|]|&&")
@@ -42,8 +43,11 @@ def _match_with_targets(
     if language == Language.PYTHON:
         code = _normalize_python_parens(code)
     segments = _SEGMENT_SPLIT.split(code)
-    main_pat = re.compile(rule.regex)
-    target_pats = [re.compile(t) for t in rule.target_regexes]  # type: ignore[union-attr]
+    try:
+        main_pat = re.compile(rule.regex)
+        target_pats = [re.compile(t) for t in rule.target_regexes]  # type: ignore[union-attr]
+    except re.error:
+        raise ErrRegexCompile(rule.rule_id)
     evidence: list[str] = []
     for seg in segments:
         if main_pat.search(seg) and any(tp.search(seg) for tp in target_pats):
@@ -75,7 +79,10 @@ def run_regex_rules(
                 )
             )
         else:
-            pattern = re.compile(rule.regex)
+            try:
+                pattern = re.compile(rule.regex)
+            except re.error:
+                raise ErrRegexCompile(rule.rule_id)
             matches = list(pattern.finditer(code))
             if not matches:
                 continue

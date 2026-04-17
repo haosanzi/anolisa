@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from agent_sec_cli.code_scanner.errors import ErrUnsupportedLang
 from agent_sec_cli.code_scanner.models import Language, Verdict
 from agent_sec_cli.code_scanner.scanner import scan
 from agent_sec_cli.security_middleware.backends.base import BaseBackend
@@ -18,9 +19,10 @@ class CodeScanBackend(BaseBackend):
         try:
             language = Language(language_str)
         except ValueError:
+            err = ErrUnsupportedLang(language_str)
             return ActionResult(
                 success=False,
-                error=f"Unsupported language: {language_str}",
+                error=f"scan error: {err.message}",
                 exit_code=1,
             )
         result = scan(code, language)

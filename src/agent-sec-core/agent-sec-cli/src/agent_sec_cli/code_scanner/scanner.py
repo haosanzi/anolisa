@@ -5,6 +5,11 @@ from agent_sec_cli.code_scanner.engine.code_extractor import (
     extract_inline_code,
 )
 from agent_sec_cli.code_scanner.engine.regex_engine import run_regex_rules
+from agent_sec_cli.code_scanner.errors import (
+    CodeScanError,
+    ErrEngineResource,
+    ErrInputEmpty,
+)
 from agent_sec_cli.code_scanner.models import (
     Finding,
     Language,
@@ -40,6 +45,22 @@ def _build_summary(findings: List[Finding], language: Language) -> str:
     return f"Detected {len(findings)} issue(s) in {language.value} code: {', '.join(rule_ids)}"
 
 
+def _error_result(
+    language: Language,
+    elapsed_ms: int,
+    exc: CodeScanError,
+) -> ScanResult:
+    """Build a ScanResult for an error case."""
+    return ScanResult(
+        ok=False,
+        verdict=Verdict.ERROR,
+        summary=f"scan error: {exc.message}",
+        findings=[],
+        language=language,
+        elapsed_ms=elapsed_ms,
+    )
+
+
 def scan(
     code: str, language: Language, *, rules: Optional[List[str]] = None
 ) -> ScanResult:
@@ -54,6 +75,10 @@ def scan(
             all rules for the given language are used.
     """
     start = time.monotonic_ns()
+
+    if not code or not code.strip():
+        return _error_result(language, 0, ErrInputEmpty())
+
     try:
         # For bash code, attempt inline extraction to detect nested python etc.
         if language == Language.BASH:
@@ -77,13 +102,12 @@ def scan(
             language=language,
             elapsed_ms=elapsed,
         )
+    except CodeScanError as exc:
+        elapsed = (time.monotonic_ns() - start) // 1_000_000
+        return _error_result(language, elapsed, exc)
+    except MemoryError:
+        elapsed = (time.monotonic_ns() - start) // 1_000_000
+        return _error_result(language, elapsed, ErrEngineResource())
     except Exception:
         elapsed = (time.monotonic_ns() - start) // 1_000_000
-        return ScanResult(
-            ok=False,
-            verdict=Verdict.ERROR,
-            summary="scan error",
-            findings=[],
-            language=language,
-            elapsed_ms=elapsed,
-        )
+        return _error_result(language, elapsed, CodeScanError())

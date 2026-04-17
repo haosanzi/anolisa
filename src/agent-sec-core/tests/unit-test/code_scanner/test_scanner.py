@@ -1,3 +1,11 @@
+from unittest.mock import patch
+
+from agent_sec_cli.code_scanner.errors import (
+    CodeScanError,
+    ErrRegexCompile,
+    ErrRuleFileNotFound,
+    ErrRuleYamlParse,
+)
 from agent_sec_cli.code_scanner.models import Language, Verdict
 from agent_sec_cli.code_scanner.scanner import scan
 
@@ -54,3 +62,75 @@ def test_scan_unknown_language_no_rules() -> None:
     assert result.ok is True
     assert result.verdict == Verdict.PASS
     assert result.findings == []
+
+
+# -- Error handling tests --
+
+
+def test_scan_empty_code_returns_error() -> None:
+    """Empty input should return ERROR verdict with ErrInputEmpty message."""
+    result = scan("", Language.BASH)
+    assert result.ok is False
+    assert result.verdict == Verdict.ERROR
+    assert result.summary == "scan error: empty input code"
+
+
+def test_scan_whitespace_only_returns_error() -> None:
+    """Whitespace-only input should return ERROR verdict."""
+    result = scan("   \n\t  ", Language.BASH)
+    assert result.ok is False
+    assert result.verdict == Verdict.ERROR
+    assert result.summary == "scan error: empty input code"
+
+
+@patch("agent_sec_cli.code_scanner.scanner.load_rules")
+def test_scan_rule_file_not_found(mock_load: object) -> None:
+    mock_load.side_effect = ErrRuleFileNotFound("/missing/path")  # type: ignore[attr-defined]
+    result = scan("echo hello", Language.BASH)
+    assert result.ok is False
+    assert result.verdict == Verdict.ERROR
+    assert "rule file not found" in result.summary
+
+
+@patch("agent_sec_cli.code_scanner.scanner.load_rules")
+def test_scan_rule_yaml_parse_error(mock_load: object) -> None:
+    mock_load.side_effect = ErrRuleYamlParse()  # type: ignore[attr-defined]
+    result = scan("echo hello", Language.BASH)
+    assert result.ok is False
+    assert result.verdict == Verdict.ERROR
+    assert "rule file YAML parse error" in result.summary
+
+
+@patch("agent_sec_cli.code_scanner.scanner.run_regex_rules")
+@patch("agent_sec_cli.code_scanner.scanner.load_rules", return_value=[])
+def test_scan_regex_compile_error(mock_load: object, mock_run: object) -> None:
+    mock_run.side_effect = ErrRegexCompile("bad pattern")  # type: ignore[attr-defined]
+    result = scan("echo hello", Language.BASH)
+    assert result.ok is False
+    assert result.verdict == Verdict.ERROR
+    assert "regex compile failed" in result.summary
+
+
+@patch("agent_sec_cli.code_scanner.scanner.load_rules")
+def test_scan_memory_error(mock_load: object) -> None:
+    mock_load.side_effect = MemoryError()  # type: ignore[attr-defined]
+    result = scan("echo hello", Language.BASH)
+    assert result.ok is False
+    assert result.verdict == Verdict.ERROR
+    assert result.summary == "scan error: engine resource exhausted"
+
+
+@patch("agent_sec_cli.code_scanner.scanner.load_rules")
+def test_scan_unexpected_exception(mock_load: object) -> None:
+    mock_load.side_effect = RuntimeError("boom")  # type: ignore[attr-defined]
+    result = scan("echo hello", Language.BASH)
+    assert result.ok is False
+    assert result.verdict == Verdict.ERROR
+    assert result.summary == "scan error: internal error"
+
+
+def test_scan_normal_no_error_summary() -> None:
+    """Normal scan should not have 'scan error' in summary."""
+    result = scan("echo hello", Language.BASH)
+    assert result.ok is True
+    assert "scan error" not in result.summary
