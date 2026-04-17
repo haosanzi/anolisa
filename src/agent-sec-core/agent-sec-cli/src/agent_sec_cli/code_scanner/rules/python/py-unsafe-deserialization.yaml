@@ -8,7 +8,8 @@ desc_zh: >-
   可能从不受信任的输入执行任意代码。
 regex: |-
   \bpickle\.(load|loads)\s*\(
-  |\byaml\.(load|unsafe_load|full_load)\s*\(
+  |\byaml\.load\s*\((?![^)]*Loader\s*=)
+  |\byaml\.(unsafe_load|full_load)\s*\(
   |\bmarshal\.(load|loads)\s*\(
   |\bshelve\.open\s*\(
 severity: warn

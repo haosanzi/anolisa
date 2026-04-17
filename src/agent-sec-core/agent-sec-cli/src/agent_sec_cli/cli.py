@@ -1,24 +1,6 @@
 """CLI entry point for agent-sec-cli package."""
 
-import json
-import sys
-
 import typer
-from agent_sec_cli.code_scanner.hook_adapter.cosh.extractors import (
-    extract_code_and_language as code_scan_cosh_extract,
-)
-from agent_sec_cli.code_scanner.hook_adapter.formatters import (
-    format_allow as code_scan_format_allow,
-)
-from agent_sec_cli.code_scanner.hook_adapter.formatters import (
-    format_cosh as code_scan_format_cosh,
-)
-from agent_sec_cli.code_scanner.hook_adapter.formatters import (
-    format_openclaw as code_scan_format_openclaw,
-)
-from agent_sec_cli.code_scanner.hook_adapter.openclaw.extractors import (
-    extract_code_and_language as code_scan_openclaw_extract,
-)
 from agent_sec_cli.security_middleware import invoke
 from agent_sec_cli.security_middleware.backends.hardening import (
     DEFAULT_HARDEN_CONFIG,
@@ -174,53 +156,16 @@ def verify(
 def code_scan(
     code: str = typer.Option("", "--code", help="Source code to scan"),
     language: str = typer.Option("bash", "--language", help="Language: bash or python"),
-    mode: str = typer.Option(
-        "",
-        "--mode",
-        help="Hook mode: cosh or openclaw (reads stdin, writes hook-format stdout)",
-    ),
 ) -> None:
     """Scan code for security issues."""
-    if mode:
-        try:
-            input_data = json.load(sys.stdin)
-        except (json.JSONDecodeError, EOFError):
-            typer.echo(code_scan_format_allow(mode))
-            raise typer.Exit(code=0)
-        tool_name = input_data.get("tool_name", "")
-        tool_input = input_data.get("tool_input", {})
-        if mode == "cosh":
-            extracted_code, extracted_lang = code_scan_cosh_extract(
-                tool_name, tool_input
-            )
-        elif mode == "openclaw":
-            extracted_code, extracted_lang = code_scan_openclaw_extract(
-                tool_name, tool_input
-            )
-        else:
-            typer.echo(f"Unknown mode: {mode}", err=True)
-            raise typer.Exit(code=1)
-        if not extracted_code or extracted_lang is None:
-            typer.echo(code_scan_format_allow(mode))
-            raise typer.Exit(code=0)
-        code = extracted_code
-        language = extracted_lang.value
-    else:
-        if not code.strip():
-            typer.echo("Error: --code is required (use --code '<source>')", err=True)
-            raise typer.Exit(code=1)
-
+    if not code.strip():
+        typer.echo("Error: --code is required (use --code '<source>')", err=True)
+        raise typer.Exit(code=1)
     result = invoke("code_scan", code=code, language=language)
-
-    if mode == "cosh":
-        typer.echo(code_scan_format_cosh(result))
-    elif mode == "openclaw":
-        typer.echo(code_scan_format_openclaw(result))
-    else:
-        if result.stdout:
-            typer.echo(result.stdout)
-        if result.error:
-            typer.echo(result.error, err=True)
+    if result.stdout:
+        typer.echo(result.stdout)
+    if result.error:
+        typer.echo(result.error, err=True)
     raise typer.Exit(code=result.exit_code)
 
 

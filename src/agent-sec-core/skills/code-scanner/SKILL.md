@@ -1,5 +1,5 @@
 ---
-name: agent-sec-core-code-scanner
+name: code-scanner
 description: 扫描 Bash / Python 代码片段中的安全风险，返回结构化 JSON 扫描结果。当用户要求检查代码安全性时使用。
 ---
 

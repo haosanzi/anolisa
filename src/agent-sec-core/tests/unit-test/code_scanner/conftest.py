@@ -712,6 +712,38 @@ PY_SENSITIVE_FILE_ACCESS_CASES = [
     # === TP: chmod/chown + sensitive path ===
     ("os.chmod('/etc/shadow', 0o777)", Language.PYTHON, "py-sensitive-file-access", 1),
     ("os.chown('/etc/passwd', 0, 0)", Language.PYTHON, "py-sensitive-file-access", 1),
+    # === TP: multi-line open() with sensitive path ===
+    (
+        "with open(\n    '/etc/shadow'\n) as f:",
+        Language.PYTHON,
+        "py-sensitive-file-access",
+        1,
+    ),
+    (
+        "f = open(\n    '/etc/passwd',\n    'r',\n)",
+        Language.PYTHON,
+        "py-sensitive-file-access",
+        1,
+    ),
+    (
+        "data = open(\n    '~/.ssh/id_rsa'\n).read()",
+        Language.PYTHON,
+        "py-sensitive-file-access",
+        1,
+    ),
+    # === TN: multi-line open() — sensitive path in different statement ===
+    (
+        "with open(\n    '/tmp/data.txt'\n) as f:\n    print('/etc/shadow')",
+        Language.PYTHON,
+        "py-sensitive-file-access",
+        0,
+    ),
+    (
+        "path = '/etc/shadow'\nwith open(\n    'config.json'\n) as f:\n    pass",
+        Language.PYTHON,
+        "py-sensitive-file-access",
+        0,
+    ),
     # === True Negatives ===
     ("open('/tmp/file.txt', 'r')", Language.PYTHON, "py-sensitive-file-access", 0),
     ("open('config.json')", Language.PYTHON, "py-sensitive-file-access", 0),
@@ -848,6 +880,24 @@ PY_UNSAFE_DESERIALIZATION_CASES = [
     # === TP: shelve ===
     ("shelve.open('data.db')", Language.PYTHON, "py-unsafe-deserialization", 1),
     # === True Negatives ===
+    (
+        "yaml.load(f, Loader=yaml.SafeLoader)",
+        Language.PYTHON,
+        "py-unsafe-deserialization",
+        0,
+    ),
+    (
+        "yaml.load(f, Loader=yaml.FullLoader)",
+        Language.PYTHON,
+        "py-unsafe-deserialization",
+        0,
+    ),
+    (
+        "yaml.load(data, Loader=yaml.BaseLoader)",
+        Language.PYTHON,
+        "py-unsafe-deserialization",
+        0,
+    ),
     ("yaml.safe_load(f)", Language.PYTHON, "py-unsafe-deserialization", 0),
     ("yaml.dump(data)", Language.PYTHON, "py-unsafe-deserialization", 0),
     ("pickle.dump(obj, f)", Language.PYTHON, "py-unsafe-deserialization", 0),

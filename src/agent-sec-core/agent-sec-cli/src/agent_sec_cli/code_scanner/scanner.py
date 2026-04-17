@@ -1,10 +1,10 @@
 import time
 from typing import List, Optional
 
-from agent_sec_cli.code_scanner.engine.regex_engine import run_regex_rules
-from agent_sec_cli.code_scanner.hook_adapter.utils.code_extractor import (
+from agent_sec_cli.code_scanner.engine.code_extractor import (
     extract_inline_code,
 )
+from agent_sec_cli.code_scanner.engine.regex_engine import run_regex_rules
 from agent_sec_cli.code_scanner.models import (
     Finding,
     Language,
@@ -65,7 +65,7 @@ def scan(
         if rules is not None:
             enabled = set(rules)
             all_rules = [r for r in all_rules if r.rule_id in enabled]
-        findings = run_regex_rules(code, all_rules)
+        findings = run_regex_rules(code, all_rules, language)
         verdict = _compute_verdict(findings)
         summary = _build_summary(findings, language)
         elapsed = (time.monotonic_ns() - start) // 1_000_000

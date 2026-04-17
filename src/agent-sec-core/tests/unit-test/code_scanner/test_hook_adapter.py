@@ -1,18 +1,18 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest  # noqa: F401  (used by pytest parametrize, keep for linting)
-from agent_sec_cli.code_scanner.hook_adapter.cosh.extractors import (
-    extract_code_and_language,
-)
-from agent_sec_cli.code_scanner.hook_adapter.openclaw.extractors import (
-    extract_code_and_language as oc_extract_code_and_language,
-)
-from agent_sec_cli.code_scanner.hook_adapter.utils.code_extractor import (
+from agent_sec_cli.code_scanner.engine.code_extractor import (
     extract_inline_code,
 )
 from agent_sec_cli.code_scanner.models import Language
+
+# Path to the standalone cosh hook script
+_COSH_HOOK = str(
+    Path(__file__).resolve().parents[2] / ".." / "cosh_hooks" / "code_scanner_hook.py"
+)
 
 # ---------------------------------------------------------------------------
 # Tests for utils/code_extractor.py
@@ -119,109 +119,22 @@ class TestExtractInlineCode:
 
 
 # ---------------------------------------------------------------------------
-# Tests for cosh/extractors.py
-# ---------------------------------------------------------------------------
-
-
-class TestCoshExtractors:
-    """Tests for the cosh-specific extract_code_and_language function."""
-
-    def test_run_shell_command(self) -> None:
-        code, lang = extract_code_and_language(
-            "run_shell_command", {"command": "rm -rf /tmp"}
-        )
-        assert code == "rm -rf /tmp"
-        assert lang == Language.BASH
-
-    def test_unknown_tool(self) -> None:
-        code, lang = extract_code_and_language("unknown_tool", {"command": "something"})
-        assert code is None
-        assert lang is None
-
-    def test_empty_field(self) -> None:
-        code, lang = extract_code_and_language("run_shell_command", {"command": ""})
-        assert code is None
-        assert lang is None
-
-    def test_deep_extract_python_in_shell(self) -> None:
-        """A shell tool containing `python -c '...'` should extract python code."""
-        code, lang = extract_code_and_language(
-            "run_shell_command", {"command": 'python3 -c "import os"'}
-        )
-        assert code == "import os"
-        assert lang == Language.PYTHON
-
-    def test_shell_command_stays_bash(self) -> None:
-        """A plain shell command without inline code should stay Language.BASH."""
-        code, lang = extract_code_and_language(
-            "run_shell_command", {"command": "ls -la /home"}
-        )
-        assert code == "ls -la /home"
-        assert lang == Language.BASH
-
-
-# ---------------------------------------------------------------------------
-# Tests for openclaw/extractors.py
-# ---------------------------------------------------------------------------
-
-
-class TestOpenClawExtractors:
-    """Tests for the OpenClaw-specific extract_code_and_language function."""
-
-    def test_exec_tool(self) -> None:
-        code, lang = oc_extract_code_and_language("exec", {"command": "rm -rf /tmp"})
-        assert code == "rm -rf /tmp"
-        assert lang == Language.BASH
-
-    def test_unknown_tool(self) -> None:
-        code, lang = oc_extract_code_and_language("web_search", {"query": "something"})
-        assert code is None
-        assert lang is None
-
-    def test_empty_command(self) -> None:
-        code, lang = oc_extract_code_and_language("exec", {"command": ""})
-        assert code is None
-        assert lang is None
-
-    def test_deep_extract_python_in_exec(self) -> None:
-        """An exec call containing `python -c '...'` should extract python code."""
-        code, lang = oc_extract_code_and_language(
-            "exec", {"command": 'python3 -c "import os"'}
-        )
-        assert code == "import os"
-        assert lang == Language.PYTHON
-
-    def test_plain_shell_stays_bash(self) -> None:
-        code, lang = oc_extract_code_and_language("exec", {"command": "ls -la /home"})
-        assert code == "ls -la /home"
-        assert lang == Language.BASH
-
-    def test_cosh_tool_not_recognized(self) -> None:
-        """cosh tool names should NOT match OpenClaw extractors."""
-        code, lang = oc_extract_code_and_language(
-            "run_shell_command", {"command": "echo hi"}
-        )
-        assert code is None
-        assert lang is None
-
-
-# ---------------------------------------------------------------------------
-# Tests for cosh/hook.py (integration via subprocess)
+# Tests for cosh/hook.py (integration via subprocess of standalone hook script)
 # ---------------------------------------------------------------------------
 
 
 class TestCoshHook:
-    """Integration tests: pipe JSON into `agent-sec-cli code-scan --mode cosh` and verify stdout JSON."""
+    """Integration tests: pipe JSON into code_scanner_hook.py and verify stdout JSON."""
 
     def _run_hook(self, input_data: dict) -> dict:
         proc = subprocess.run(
-            [sys.executable, "-m", "agent_sec_cli.cli", "code-scan", "--mode", "cosh"],
+            [sys.executable, _COSH_HOOK],
             input=json.dumps(input_data),
             capture_output=True,
             text=True,
             timeout=15,
         )
-        assert proc.returncode == 0, f"CLI stderr: {proc.stderr}"
+        assert proc.returncode == 0, f"Hook stderr: {proc.stderr}"
         return json.loads(proc.stdout)
 
     def test_allow_safe_command(self) -> None:
@@ -257,7 +170,7 @@ class TestCoshHook:
     def test_invalid_json_allows(self) -> None:
         """Malformed stdin should fail-open with allow."""
         proc = subprocess.run(
-            [sys.executable, "-m", "agent_sec_cli.cli", "code-scan", "--mode", "cosh"],
+            [sys.executable, _COSH_HOOK],
             input="not-json",
             capture_output=True,
             text=True,
@@ -274,19 +187,21 @@ class TestCoshHook:
 
 
 class TestOpenClawHook:
-    """Integration tests: pipe JSON into `agent-sec-cli code-scan --mode openclaw` and verify stdout JSON."""
+    """Integration tests: call `agent-sec-cli code-scan --code ... --language bash`
+    and verify ScanResult JSON output (mirrors what index.js does)."""
 
-    def _run_hook(self, input_data: dict) -> dict:
+    def _run_scan(self, command: str) -> dict:
         proc = subprocess.run(
             [
                 sys.executable,
                 "-m",
                 "agent_sec_cli.cli",
                 "code-scan",
-                "--mode",
-                "openclaw",
+                "--code",
+                command,
+                "--language",
+                "bash",
             ],
-            input=json.dumps(input_data),
             capture_output=True,
             text=True,
             timeout=15,
@@ -295,51 +210,18 @@ class TestOpenClawHook:
         return json.loads(proc.stdout)
 
     def test_allow_safe_command(self) -> None:
-        output = self._run_hook(
-            {
-                "tool_name": "exec",
-                "tool_input": {"command": "echo hello"},
-            }
-        )
-        assert output["skip"] is False
-        assert "skipReason" not in output
+        scan_result = self._run_scan("echo hello")
+        assert scan_result["verdict"] == "pass"
 
     def test_warn_dangerous_command(self) -> None:
-        output = self._run_hook(
-            {
-                "tool_name": "exec",
-                "tool_input": {"command": "rm -rf /tmp/x"},
-            }
+        scan_result = self._run_scan("rm -rf /tmp/x")
+        assert scan_result["verdict"] == "warn"
+        assert (
+            "code-scanner" not in scan_result.get("summary", "")
+            or len(scan_result["findings"]) > 0
         )
-        assert output["skip"] is False
-        assert "skipReason" in output
-        assert "code-scanner" in output["skipReason"]
 
-    def test_unknown_tool_allows(self) -> None:
-        output = self._run_hook(
-            {
-                "tool_name": "web_search",
-                "tool_input": {"query": "something"},
-            }
-        )
-        assert output["skip"] is False
-
-    def test_invalid_json_allows(self) -> None:
-        """Malformed stdin should fail-open with skip=false."""
-        proc = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "agent_sec_cli.cli",
-                "code-scan",
-                "--mode",
-                "openclaw",
-            ],
-            input="not-json",
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        assert proc.returncode == 0
-        output = json.loads(proc.stdout)
-        assert output["skip"] is False
+    def test_unknown_command_passes(self) -> None:
+        """A benign command should produce verdict=pass."""
+        scan_result = self._run_scan("ls -la /home")
+        assert scan_result["verdict"] == "pass"

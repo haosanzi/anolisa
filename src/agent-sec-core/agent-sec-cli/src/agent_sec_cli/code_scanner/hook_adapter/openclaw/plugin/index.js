@@ -2,7 +2,7 @@
  * code-scanner plugin for OpenClaw.
  *
  * Registers a `before_tool_call` hook that intercepts `exec` tool calls,
- * pipes them through the Python code_scanner for security analysis, and
+ * invokes `agent-sec-cli code-scan` for security analysis, and
  * returns { skip: true, skipReason } when a dangerous pattern is detected.
  */
 
@@ -18,14 +18,13 @@ module.exports = function register(api) {
         return {};
       }
 
-      const input = JSON.stringify({
-        tool_name: event.toolName,
-        tool_input: event.params,
-      });
+      const command = (event.params && event.params.command) || "";
+      if (!command) {
+        return {};
+      }
 
       try {
-        const proc = spawnSync("agent-sec-cli", ["code-scan", "--mode", "openclaw"], {
-          input,
+        const proc = spawnSync("agent-sec-cli", ["code-scan", "--code", command, "--language", "bash"], {
           encoding: "utf-8",
           timeout: TIMEOUT_MS,
           stdio: ["pipe", "pipe", "pipe"],
@@ -36,9 +35,15 @@ module.exports = function register(api) {
           return {};
         }
 
-        const result = JSON.parse(proc.stdout.trim());
-        if (result.skip) {
-          return { skip: true, skipReason: result.skipReason || "Blocked by code-scanner" };
+        const scanResult = JSON.parse(proc.stdout.trim());
+        const verdict = scanResult.verdict || "pass";
+        const summary = scanResult.summary || "";
+
+        if (verdict === "deny") {
+          return { skip: true, skipReason: `[code-scanner] ${summary}` };
+        }
+        if (verdict === "warn") {
+          return { skip: false, skipReason: `[code-scanner] ${summary}` };
         }
         return {};
       } catch {
