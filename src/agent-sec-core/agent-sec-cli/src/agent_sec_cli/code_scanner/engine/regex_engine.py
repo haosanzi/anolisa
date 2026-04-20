@@ -50,7 +50,10 @@ def _match_with_targets(
         raise ErrRegexCompile(rule.rule_id)
     evidence: list[str] = []
     for seg in segments:
-        if main_pat.search(seg) and any(tp.search(seg) for tp in target_pats):
+        m = main_pat.search(seg)
+        if m and any(
+            t.start() > m.start() for tp in target_pats if (t := tp.search(seg))
+        ):
             evidence.append(seg.strip())
     return evidence
 

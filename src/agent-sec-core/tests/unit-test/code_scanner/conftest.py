@@ -115,6 +115,33 @@ SHELL_TAMPER_SENSITIVE_FILE_CASES = [
     ),
     ("sed -i 's/old/new/' config.txt", Language.BASH, "shell-tamper-sensitive-file", 0),
     ("tee /tmp/log.txt", Language.BASH, "shell-tamper-sensitive-file", 0),
+    # --- TN: order constraint (sensitive path before operator) ---
+    (
+        "ls -la ~/.ssh/id_dsa* 2>/dev/null",
+        Language.BASH,
+        "shell-tamper-sensitive-file",
+        0,
+    ),
+    (
+        "ssh-keygen -l -f ~/.ssh/id_dsa 2>/dev/null",
+        Language.BASH,
+        "shell-tamper-sensitive-file",
+        0,
+    ),
+    (
+        "cat /etc/passwd > /dev/null",
+        Language.BASH,
+        "shell-tamper-sensitive-file",
+        0,
+    ),
+    (
+        "grep root /etc/shadow 2>&1",
+        Language.BASH,
+        "shell-tamper-sensitive-file",
+        0,
+    ),
+    ("test -f ~/.ssh/id_rsa", Language.BASH, "shell-tamper-sensitive-file", 0),
+    ("stat /etc/sudoers", Language.BASH, "shell-tamper-sensitive-file", 0),
 ]
 
 SHELL_CD_SENSITIVE_DIR_CASES = [
