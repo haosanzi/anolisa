@@ -154,7 +154,7 @@ class TestCoshHook:
                 "tool_input": {"command": "rm -rf /tmp/x"},
             }
         )
-        assert output["decision"] == "allow"
+        assert output["decision"] == "ask"
         assert "systemMessage" in output
         assert "code-scanner" in output["systemMessage"]
 

@@ -47,9 +47,7 @@ def _format_cosh(scan_result: dict) -> str:
     msg = f"[code-scanner] Detected {len(findings)} issue(s):\n" + "\n".join(descs)
 
     if verdict == "warn":
-        return json.dumps(
-            {"decision": "allow", "systemMessage": msg}, ensure_ascii=False
-        )
+        return json.dumps({"decision": "ask", "systemMessage": msg}, ensure_ascii=False)
     if verdict == "deny":
         return json.dumps({"decision": "block", "reason": msg}, ensure_ascii=False)
     # error or unknown -> fail-open
