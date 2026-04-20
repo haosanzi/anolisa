@@ -82,6 +82,9 @@ def scan(
     try:
         # For bash code, attempt inline extraction to detect nested python etc.
         if language == Language.BASH:
+            # NOTE: nested Python-in-Bash-in-Python is not handled for now.
+            # Also not handled: multi-command strings where only one part
+            # is an interpreter call (e.g. "cd /tmp && python3 -c 'code'").
             inline = extract_inline_code(code)
             if inline is not None:
                 code, language = inline

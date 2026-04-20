@@ -42,7 +42,6 @@ agent-sec-cli code-scan --code '<source_code>' --language <bash|python>
 | `severity` | string | 严重级别：`warn` / `deny` |
 | `desc_zh` | string | 中文描述 |
 | `desc_en` | string | 英文描述 |
-| `message` | string | 命中消息 |
 | `evidence` | string[] | 匹配到的代码片段列表 |
 
 ### Verdict 说明
