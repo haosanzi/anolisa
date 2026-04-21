@@ -10,13 +10,9 @@ class TestGetWriter(unittest.TestCase):
     def test_singleton_returns_same_instance(self):
         import agent_sec_cli.security_events
 
-        # Reset singleton
-        agent_sec_cli.security_events._writer = None
         w1 = agent_sec_cli.security_events.get_writer()
         w2 = agent_sec_cli.security_events.get_writer()
         self.assertIs(w1, w2)
-        # Cleanup
-        agent_sec_cli.security_events._writer = None
 
 
 class TestLogEvent(unittest.TestCase):
@@ -43,6 +39,67 @@ class TestLogEvent(unittest.TestCase):
         evt = SecurityEvent(event_type="t", category="c", details={})
         # Should not raise
         log_event(evt)
+
+
+class TestGetSqliteWriter(unittest.TestCase):
+    def test_singleton_returns_same_instance(self):
+        import agent_sec_cli.security_events
+
+        w1 = agent_sec_cli.security_events.get_sqlite_writer()
+        w2 = agent_sec_cli.security_events.get_sqlite_writer()
+        self.assertIs(w1, w2)
+
+
+class TestDualWrite(unittest.TestCase):
+    @patch("agent_sec_cli.security_events.get_sqlite_writer")
+    @patch("agent_sec_cli.security_events.get_writer")
+    def test_log_event_writes_to_both(self, mock_get_writer, mock_get_sqlite_writer):
+        mock_jsonl = MagicMock()
+        mock_sqlite = MagicMock()
+        mock_get_writer.return_value = mock_jsonl
+        mock_get_sqlite_writer.return_value = mock_sqlite
+
+        from agent_sec_cli.security_events import log_event
+
+        evt = SecurityEvent(event_type="t", category="c", details={})
+        log_event(evt)
+        mock_jsonl.write.assert_called_once_with(evt)
+        mock_sqlite.write.assert_called_once_with(evt)
+
+    @patch("agent_sec_cli.security_events.get_sqlite_writer")
+    @patch("agent_sec_cli.security_events.get_writer")
+    def test_jsonl_failure_does_not_block_sqlite(
+        self, mock_get_writer, mock_get_sqlite_writer
+    ):
+        mock_jsonl = MagicMock()
+        mock_jsonl.write.side_effect = RuntimeError("disk full")
+        mock_sqlite = MagicMock()
+        mock_get_writer.return_value = mock_jsonl
+        mock_get_sqlite_writer.return_value = mock_sqlite
+
+        from agent_sec_cli.security_events import log_event
+
+        evt = SecurityEvent(event_type="t", category="c", details={})
+        log_event(evt)
+        # SQLite write should still be called even though JSONL failed
+        mock_sqlite.write.assert_called_once_with(evt)
+
+    @patch("agent_sec_cli.security_events.get_sqlite_writer")
+    @patch("agent_sec_cli.security_events.get_writer")
+    def test_sqlite_failure_does_not_block_jsonl(
+        self, mock_get_writer, mock_get_sqlite_writer
+    ):
+        mock_jsonl = MagicMock()
+        mock_sqlite = MagicMock()
+        mock_sqlite.write.side_effect = RuntimeError("corruption")
+        mock_get_writer.return_value = mock_jsonl
+        mock_get_sqlite_writer.return_value = mock_sqlite
+
+        from agent_sec_cli.security_events import log_event
+
+        evt = SecurityEvent(event_type="t", category="c", details={})
+        log_event(evt)
+        mock_jsonl.write.assert_called_once_with(evt)
 
 
 if __name__ == "__main__":

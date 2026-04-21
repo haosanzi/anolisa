@@ -1,7 +1,7 @@
 """Lifecycle hooks — transparent pre/post/error logging via security_events."""
 
 import copy
-from typing import Any, Dict
+from typing import Any
 
 from agent_sec_cli.security_events import SecurityEvent, log_event
 from agent_sec_cli.security_middleware.context import RequestContext
@@ -11,7 +11,7 @@ from agent_sec_cli.security_middleware.result import ActionResult
 # Action → SecurityEvent category mapping
 # ---------------------------------------------------------------------------
 
-_ACTION_CATEGORY: Dict[str, str] = {
+_ACTION_CATEGORY: dict[str, str] = {
     "sandbox_prehook": "sandbox",
     "harden": "hardening",
     "verify": "asset_verify",
@@ -31,7 +31,7 @@ def _category_for(action: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def pre_action(ctx: RequestContext, kwargs: Dict[str, Any]) -> None:
+def pre_action(ctx: RequestContext, kwargs: dict[str, Any]) -> None:
     """No-op — kept for future extensibility.
 
     Single-event model: we only emit one event per invocation, either on
@@ -43,7 +43,7 @@ def pre_action(ctx: RequestContext, kwargs: Dict[str, Any]) -> None:
 
 
 def post_action(
-    ctx: RequestContext, result: ActionResult, kwargs: Dict[str, Any]
+    ctx: RequestContext, result: ActionResult, kwargs: dict[str, Any]
 ) -> None:
     """Log the single completion event after the backend completes.
 
@@ -51,7 +51,7 @@ def post_action(
     single event so the full request/response context is captured in one record.
     """
     try:
-        details: Dict[str, Any] = {
+        details: dict[str, Any] = {
             "request": copy.deepcopy(kwargs),
             "result": copy.deepcopy(result.data),
         }
@@ -67,21 +67,22 @@ def post_action(
         pass
 
 
-def on_error(ctx: RequestContext, exception: Exception, kwargs: Dict[str, Any]) -> None:
+def on_error(ctx: RequestContext, exception: Exception, kwargs: dict[str, Any]) -> None:
     """Log the single error event when the backend raises.
 
     Merges *kwargs* (request inputs) and error details into a single event so
     the full request context is captured alongside the failure.
     """
     try:
-        details: Dict[str, Any] = {
+        details: dict[str, Any] = {
             "request": copy.deepcopy(kwargs),
             "error": str(exception),
             "error_type": type(exception).__name__,
         }
         event = SecurityEvent(
-            event_type=f"{ctx.action}_error",
+            event_type=ctx.action,
             category=_category_for(ctx.action),
+            result="failed",
             details=details,
             trace_id=ctx.trace_id,
             session_id=ctx.session_id,

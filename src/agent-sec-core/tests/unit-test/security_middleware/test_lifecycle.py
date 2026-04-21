@@ -63,8 +63,9 @@ class TestOnError(unittest.TestCase):
 
         mock_log.assert_called_once()
         event = mock_log.call_args[0][0]
-        self.assertEqual(event.event_type, "verify_error")
+        self.assertEqual(event.event_type, "verify")
         self.assertEqual(event.category, "asset_verify")
+        self.assertEqual(event.result, "failed")
         self.assertIn("error", event.details)
         self.assertEqual(event.details["error"], "test error")
         self.assertEqual(event.details["error_type"], "RuntimeError")

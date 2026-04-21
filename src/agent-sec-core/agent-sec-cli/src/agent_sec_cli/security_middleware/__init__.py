@@ -9,7 +9,7 @@ Public API
 
 import sys
 from pathlib import PurePath
-from typing import List
+from typing import Any
 
 from agent_sec_cli.security_middleware import lifecycle, router
 from agent_sec_cli.security_middleware.context import RequestContext
@@ -50,15 +50,16 @@ def _detect_caller() -> str:
 # ---------------------------------------------------------------------------
 
 
-def invoke(action: str, **kwargs) -> ActionResult:
+def invoke(action: str, **kwargs: Any) -> ActionResult:
     """Sole public entry point for all security capabilities.
 
     1. Builds a :class:`RequestContext` (auto ``trace_id``, ``timestamp``).
     2. Calls ``pre_action`` (no-op under the single-event model).
     3. Routes to the appropriate backend and calls ``execute(ctx, **kwargs)``.
-    4. Logs a single ``<action>`` completion event (post-hook) — or a single
-       ``<action>_error`` event on failure, each containing both the request
-       kwargs and the result/error details.
+    4. Logs a single ``<action>`` completion event (post-hook) with
+       ``result="succeeded"``, or logs the same event type with
+       ``result="failed"`` on failure (on_error). Each event contains both
+       the request kwargs and the result/error details.
     5. Returns the :class:`ActionResult` produced by the backend.
 
     Raises whatever exception the backend raises (after logging it).
@@ -79,4 +80,4 @@ def invoke(action: str, **kwargs) -> ActionResult:
     return result
 
 
-__all__: List[str] = ["invoke", "ActionResult", "RequestContext"]
+__all__: list[str] = ["invoke", "ActionResult", "RequestContext"]

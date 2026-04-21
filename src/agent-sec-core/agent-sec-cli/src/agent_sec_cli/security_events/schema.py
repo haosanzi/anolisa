@@ -3,7 +3,7 @@
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -25,6 +25,7 @@ class SecurityEvent(BaseModel):
         details     — backend-specific structured data
 
     Auto-filled fields:
+        result      — succeeded (default) | failed
         trace_id    — injected by middleware (empty string until then)
         timestamp   — ISO-8601
         event_id    — UUID
@@ -34,15 +35,16 @@ class SecurityEvent(BaseModel):
 
     event_type: str
     category: str
-    details: Dict[str, Any]
+    details: dict[str, Any]
+    result: Literal["succeeded", "failed"] = "succeeded"
     trace_id: str = ""
     timestamp: str = Field(default_factory=_now_iso)
     event_id: str = Field(default_factory=_new_uuid)
     pid: int = Field(default_factory=os.getpid)
     uid: int = Field(default_factory=os.getuid)
-    session_id: Optional[str] = None
+    session_id: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Return a plain ``dict`` suitable for ``json.dumps``."""
         d = self.model_dump()
         # Return keys in the canonical order expected by callers.
@@ -50,6 +52,7 @@ class SecurityEvent(BaseModel):
             "event_id": d["event_id"],
             "event_type": d["event_type"],
             "category": d["category"],
+            "result": d["result"],
             "timestamp": d["timestamp"],
             "trace_id": d["trace_id"],
             "pid": d["pid"],
