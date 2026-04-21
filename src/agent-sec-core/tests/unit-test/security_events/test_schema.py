@@ -40,6 +40,14 @@ class TestSecurityEventAutoFill(unittest.TestCase):
         evt = SecurityEvent(event_type="t", category="c", details={})
         self.assertEqual(evt.uid, os.getuid())
 
+    def test_result_default_succeeded(self):
+        evt = SecurityEvent(event_type="t", category="c", details={})
+        self.assertEqual(evt.result, "succeeded")
+
+    def test_result_can_be_failed(self):
+        evt = SecurityEvent(event_type="t", category="c", details={}, result="failed")
+        self.assertEqual(evt.result, "failed")
+
     def test_trace_id_default_empty(self):
         evt = SecurityEvent(event_type="t", category="c", details={})
         self.assertEqual(evt.trace_id, "")
@@ -57,6 +65,7 @@ class TestSecurityEventToDict(unittest.TestCase):
             "event_id",
             "event_type",
             "category",
+            "result",
             "timestamp",
             "trace_id",
             "pid",

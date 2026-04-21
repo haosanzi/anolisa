@@ -16,7 +16,8 @@ python-code-pretty: ## Format Python code using black and isort
 test-python: ## Run Python unit and integration tests
 	@echo "🧪 Running Python tests..."
 	cd agent-sec-cli && uv sync
-	uv run --project agent-sec-cli pytest tests/ --ignore=tests/e2e -v
+	uv run --project agent-sec-cli pytest tests/ --ignore=tests/e2e/ -v
+	uv run --project agent-sec-cli pytest tests/e2e/cli -v
 
 .PHONY: test-rust
 test-rust: ## Run Rust sandbox tests

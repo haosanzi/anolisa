@@ -620,6 +620,7 @@ class TestWriterMultiProcessSafety(unittest.TestCase):
         "event_id",
         "event_type",
         "category",
+        "result",
         "timestamp",
         "trace_id",
         "pid",
