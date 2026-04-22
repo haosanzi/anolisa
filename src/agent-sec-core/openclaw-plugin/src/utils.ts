@@ -9,6 +9,23 @@ export type CliResult = {
   exitCode: number;
 };
 
+// ---------------------------------------------------------------------------
+// Test-only mock support
+// ---------------------------------------------------------------------------
+type CliMockFn = (args: string[], opts: { timeout?: number }) => Promise<CliResult>;
+
+let _mockFn: CliMockFn | undefined;
+
+/** Test-only: override callAgentSecCli with a mock function. */
+export function _setCliMock(fn: CliMockFn): void {
+  _mockFn = fn;
+}
+
+/** Test-only: remove mock and restore real CLI execution. */
+export function _resetCliMock(): void {
+  _mockFn = undefined;
+}
+
 /**
  * Execute an agent-sec-cli subcommand and return the raw output.
  * Each capability is responsible for parsing stdout on its own.
@@ -17,6 +34,11 @@ export async function callAgentSecCli(
   args: string[],
   opts: { timeout?: number } = {},
 ): Promise<CliResult> {
+
+  // If a mock is active, delegate to it instead of spawning a real process.
+  if (_mockFn) {
+    return _mockFn(args, opts);
+  }
 
   const timeout = opts.timeout ?? 5000;
 

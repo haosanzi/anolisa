@@ -1,6 +1,6 @@
 # agent-sec OpenClaw Plugin
 
-OpenClaw security plugin that hooks into the agent lifecycle via `agent-sec-cli`, providing tool gating, code scanning, skill integrity verification, inbound filtering, prompt analysis, prompt guarding, and LLM output auditing.
+OpenClaw security plugin that hooks into the agent lifecycle via `agent-sec-cli`, providing code scanning, skill integrity verification and prompt analysis.
 
 ---
 
@@ -25,16 +25,15 @@ openclaw-plugin/
 │   ├── types.ts                # SecurityCapability interface
 │   ├── utils.ts                # CLI invocation utility (callAgentSecCli)
 │   └── capabilities/           # One file per security capability
-│       ├── tool-gate.ts        #   before_tool_call hook
-│       ├── code-scan.ts        #   before_tool_call hook (exec commands)
-│       ├── skill-ledger.ts     #   before_tool_call hook (SKILL.md reads)
-│       ├── inbound-filter.ts   #   before_dispatch hook
-│       ├── prompt-analyzer.ts  #   before_agent_reply hook
-│       ├── prompt-guard.ts     #   before_prompt_build hook
-│       └── llm-audit.ts        #   llm_output hook
+│       ├── skill-ledger.ts     #   before_tool_call 
+│       ├── code-scan.ts        #   before_tool_call hook
+│       └── prompt-scan.ts      #   before_dispatch hook
 ├── tests/                      # Test utilities (not compiled into dist/)
 │   ├── test-harness.ts         # Mock OpenClaw API for local testing
-│   └── smoke-test.ts           # Smoke test for all capabilities
+│   ├── smoke-test.ts           # Smoke test for all capabilities
+│   └── unit/                   # Unit tests
+│       ├── code-scan.test.ts   #   code-scan handler tests
+│       └── skill-ledger-test.ts #  skill-ledger handler tests
 ├── scripts/
 │   └── deploy.sh               # Deployment and registration script
 ├── dist/                       # Compiled JS output (gitignored)
@@ -120,7 +119,7 @@ sudo make install-openclaw-plugin
 sudo /opt/agent-sec/openclaw-plugin/scripts/deploy.sh /opt/agent-sec/openclaw-plugin
 
 # Restart gateway to load the plugin
-sudo systemctl restart openclaw-gateway
+openclaw gateway restart
 ```
 
 > **Note:** `make install-openclaw-plugin` only copies files. You must run `deploy.sh` separately to register the plugin.
@@ -139,8 +138,9 @@ The deployment script performs these steps:
 > 
 > To restart the gateway:
 > ```bash
-> sudo systemctl restart openclaw-gateway  # If using systemd
-> # Or manually restart your gateway process
+> openclaw gateway restart  # Recommended: OpenClaw CLI
+> # Or
+> systemctl --user restart openclaw-gateway-dev.service  # If using systemd user service
 > ```
 
 ### Custom Config Path
@@ -171,11 +171,9 @@ Version: 0.3.0
 Source: ~/path/to/openclaw-plugin/dist/index.js
 
 Typed hooks:
-before_agent_reply (priority 150)
-before_dispatch (priority 200)
-before_prompt_build (priority 50)
-before_tool_call (priority 100)
-llm_output (priority 0)
+before_dispatch (priority 190)
+before_tool_call (priority 80)
+before_tool_call (priority 0)
 ```
 
 ---
@@ -184,7 +182,7 @@ llm_output (priority 0)
 
 ### Smoke Test (Mock Mode)
 
-Runs all 7 capabilities against mock events without requiring a real `agent-sec-cli` installation:
+Runs all capabilities against mock events without requiring a real `agent-sec-cli` installation:
 
 ```bash
 npm run smoke
@@ -204,26 +202,9 @@ AGENT_SEC_LIVE=1 npm run smoke
 
 | Capability         | Hook                  | Priority | Behavior                                             |
 |--------------------|-----------------------|----------|------------------------------------------------------|
-| `tool-gate`        | `before_tool_call`    | 100      | Gates tool execution; blocks if risk threshold met   |
-| `code-scan`        | `before_tool_call`    | 80       | Scans shell commands for security issues             |
+| `prompt-scan`      | `before_dispatch`     | 190      | Scans inbound messages for prompt injection attacks   |
+| `code-scan`        | `before_tool_call`    | 0 (default) | Scans tool commands for security issues              |
 | `skill-ledger`     | `before_tool_call`    | 80       | Checks skill integrity when SKILL.md is read         |
-| `inbound-filter`   | `before_dispatch`     | 200      | Scans inbound messages; blocks high-risk content     |
-| `prompt-analyzer`  | `before_agent_reply`  | 150      | Detects prompt injection attacks                     |
-| `prompt-guard`     | `before_prompt_build` | 50       | Injects security policy into prompt context          |
-| `llm-audit`        | `llm_output`          | 0        | Fire-and-forget audit logging of LLM responses       |
-
-### Disabling Individual Capabilities
-
-Configure via OpenClaw plugin settings:
-
-```json
-{
-  "capabilities": {
-    "tool-gate": { "enabled": false },
-    "llm-audit": { "enabled": false }
-  }
-}
-```
 
 ### Configuring `skill-ledger`
 
@@ -253,7 +234,7 @@ npm run build
 ./scripts/deploy.sh "$(pwd)"
 
 # Restart gateway
-sudo systemctl restart openclaw-gateway
+openclaw gateway restart
 ```
 
 ### Production Environment (Installed via Makefile)
@@ -269,7 +250,7 @@ sudo make install-openclaw-plugin
 sudo /opt/agent-sec/openclaw-plugin/scripts/deploy.sh /opt/agent-sec/openclaw-plugin
 
 # Restart gateway
-sudo systemctl restart openclaw-gateway
+openclaw gateway restart
 ```
 
 The `openclaw plugins install --force` command automatically updates the plugin to the new version. Other plugins are unaffected.

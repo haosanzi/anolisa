@@ -68,6 +68,6 @@ export const promptScan: SecurityCapability = {
       } catch {
         return undefined; // crash ≠ threat -> fail-open
       }
-    }, { priority: 190 }); // 低于 inbound-filter (200)，用户消息通过通用过滤后再做注入检测
+    }, { priority: 190 });
   },
 };

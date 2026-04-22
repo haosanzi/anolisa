@@ -56,10 +56,21 @@ export async function testCapability(
   // 第一步：注册
   cap.register(api);
 
-  // 第二步：触发每个已注册的 handler
+  // 第二步：检查每个已注册的 hook 是否有对应的 mock 事件
+  const missingMocks = hooks
+    .filter((h) => !(h.hookName in mockEvents))
+    .map((h) => h.hookName);
+  if (missingMocks.length > 0) {
+    throw new Error(
+      `[${cap.id}] Missing mock events for registered hooks: ${missingMocks.join(", ")}. ` +
+      `Add these to mockEvents so the handler logic is actually exercised.`,
+    );
+  }
+
+  // 第三步：触发每个已注册的 handler
   const results: TestResult[] = [];
   for (const hook of hooks) {
-    const event = mockEvents[hook.hookName] ?? {};
+    const event = mockEvents[hook.hookName];
     const ctx = mockCtx?.[hook.hookName] ?? {};
     const start = performance.now();
     try {

@@ -24,8 +24,12 @@ test-rust: ## Run Rust sandbox tests
 	@echo "🧪 Running Rust tests..."
 	cd linux-sandbox && cargo test -- --skip bwrap_seccomp
 
+test-openclaw-plugin:
+	@echo "🧪 Running Rust tests..."
+	cd openclaw-plugin && npm run test & npm run smoke
+
 .PHONY: test
-test: test-python test-rust ## Run all tests
+test: test-python test-rust test-openclaw-plugin ## Run all tests
 
 # =============================================================================
 # BUILD
@@ -38,9 +42,6 @@ build-sandbox: ## Build linux-sandbox binary
 .PHONY: build-cli
 build-cli: ## Build agent-sec-cli wheel with maturin (Rust + Python)
 	cd agent-sec-cli && uv run maturin build --release -i python3.11
-
-.PHONY: build-all
-build-all: build-sandbox build-cli ## Build all components
 
 .PHONY: setup
 setup: ## Install all dependencies (including dev), create .venv

@@ -40,5 +40,3 @@ openclaw plugins install "$PLUGIN_DIR" --force --dangerously-force-unsafe-instal
 echo "  ✓ 插件已安装/更新"
 echo ""
 echo "提示: 请重启 OpenClaw gateway 以加载插件"
-echo "  systemctl restart openclaw-gateway  # 如果使用 systemd"
-echo "  或者手动重启 gateway 进程"

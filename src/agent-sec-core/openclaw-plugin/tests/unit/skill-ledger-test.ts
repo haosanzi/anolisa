@@ -1,10 +1,10 @@
 // tests/skill-ledger-test.ts
 // Deep test for skill-ledger hook: event filtering, path resolution, fail-open, resilience.
 //
-// Run:  npx tsx tests/skill-ledger-test.ts
-//       npm run test:skill-ledger
+// Run:  npx tsx tests/unit/skill-ledger-test.ts
+//       npm test
 
-import { skillLedger } from "../src/capabilities/skill-ledger.js";
+import { skillLedger } from "../../src/capabilities/skill-ledger.js";
 
 // ── Minimal test framework ──────────────────────────────────────────────────
 

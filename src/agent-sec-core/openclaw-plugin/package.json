@@ -17,7 +17,7 @@
     "build": "tsc --project tsconfig.json",
     "pack": "npm run build && npm pack",
     "smoke": "npx tsx tests/smoke-test.ts",
-    "test:skill-ledger": "npx tsx tests/skill-ledger-test.ts"
+    "test": "npx tsx --test tests/unit/*test.ts"
   },
   "peerDependencies": {
     "openclaw": "*"
