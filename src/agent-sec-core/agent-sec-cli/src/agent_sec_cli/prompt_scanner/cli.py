@@ -175,7 +175,7 @@ def scan_prompt(
             mw_result = invoke(
                 "prompt_scan",
                 text=t,
-                mode=mode,
+                mode=scan_mode,
                 source=source,
             )
         except Exception as exc:
@@ -190,6 +190,9 @@ def scan_prompt(
 
         # --- Output ---
         if output_format == "text":
+            if not mw_result.data:
+                typer.echo(f"Error: {mw_result.error}", err=True)
+                raise typer.Exit(code=mw_result.exit_code)
             _print_text(mw_result.data)
         else:
             typer.echo(mw_result.stdout)

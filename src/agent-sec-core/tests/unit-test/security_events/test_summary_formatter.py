@@ -401,6 +401,156 @@ class TestSandboxSummary:
 
 
 # ---------------------------------------------------------------------------
+# Test: prompt scan summary
+# ---------------------------------------------------------------------------
+
+
+def _make_prompt_scan_event(
+    verdict: str,
+    threat_type: str = "benign",
+    summary: str = "",
+    result: str = "succeeded",
+    minutes_ago: int = 5,
+) -> SecurityEvent:
+    """Helper to build a prompt_scan SecurityEvent."""
+    scan_result: dict[str, Any] = {
+        "schema_version": "1.0",
+        "ok": verdict == "pass",
+        "verdict": verdict,
+        "risk_level": {"pass": "low", "warn": "medium", "deny": "high"}.get(
+            verdict, "unknown"
+        ),
+        "threat_type": threat_type,
+        "summary": summary or f"Scan result: {verdict}",
+        "findings": [],
+        "layer_results": [],
+        "engine_version": "0.1.0",
+        "elapsed_ms": 10,
+    }
+    if verdict in ("warn", "deny"):
+        scan_result["confidence"] = 0.85
+    details: dict[str, Any] = {
+        "request": {"text": "some prompt", "mode": "standard", "source": ""},
+        "result": scan_result,
+    }
+    return _make_event(
+        event_type="prompt_scan",
+        category="prompt_scan",
+        result=result,
+        details=details,
+        timestamp=_ts_minutes_ago(minutes_ago),
+    )
+
+
+class TestPromptScanSummary:
+    def test_section_header_present(self):
+        events = [_make_prompt_scan_event("pass")]
+        output = format_summary(events, "last 24 hours")
+        assert "--- Prompt Scan ---" in output
+
+    def test_scan_count_succeeded(self):
+        events = [
+            _make_prompt_scan_event("pass", minutes_ago=1),
+            _make_prompt_scan_event(
+                "deny", threat_type="direct_injection", minutes_ago=2
+            ),
+        ]
+        output = format_summary(events, "last 24 hours")
+        assert "Scans performed: 2 (succeeded: 2, failed: 0)" in output
+
+    def test_scan_count_with_failed_event(self):
+        events = [
+            _make_prompt_scan_event("pass", minutes_ago=1),
+            _make_prompt_scan_event("pass", result="failed", minutes_ago=2),
+        ]
+        output = format_summary(events, "last 24 hours")
+        assert "Scans performed: 2 (succeeded: 1, failed: 1)" in output
+
+    def test_verdict_breakdown_pass_only(self):
+        events = [
+            _make_prompt_scan_event("pass", minutes_ago=1),
+            _make_prompt_scan_event("pass", minutes_ago=2),
+        ]
+        output = format_summary(events, "last 24 hours")
+        assert "pass: 2" in output
+
+    def test_verdict_breakdown_mixed(self):
+        events = [
+            _make_prompt_scan_event("pass", minutes_ago=1),
+            _make_prompt_scan_event("warn", threat_type="jailbreak", minutes_ago=2),
+            _make_prompt_scan_event(
+                "deny", threat_type="direct_injection", minutes_ago=3
+            ),
+        ]
+        output = format_summary(events, "last 24 hours")
+        assert "deny: 1" in output
+        assert "pass: 1" in output
+        assert "warn: 1" in output
+
+    def test_threat_type_breakdown(self):
+        events = [
+            _make_prompt_scan_event("warn", threat_type="jailbreak", minutes_ago=1),
+            _make_prompt_scan_event(
+                "deny", threat_type="direct_injection", minutes_ago=2
+            ),
+            _make_prompt_scan_event(
+                "deny", threat_type="direct_injection", minutes_ago=3
+            ),
+        ]
+        output = format_summary(events, "last 24 hours")
+        assert "direct_injection: 2" in output
+        assert "jailbreak: 1" in output
+
+    def test_no_threat_type_section_when_all_pass(self):
+        events = [
+            _make_prompt_scan_event("pass", minutes_ago=1),
+            _make_prompt_scan_event("pass", minutes_ago=2),
+        ]
+        output = format_summary(events, "last 24 hours")
+        assert "Threat types" not in output
+
+    def test_latest_threats_shown(self):
+        events = [
+            _make_prompt_scan_event(
+                "deny",
+                threat_type="direct_injection",
+                summary="[Rule] Direct Injection detected (confidence: 90.0%)",
+                minutes_ago=1,
+            ),
+        ]
+        output = format_summary(events, "last 24 hours")
+        assert "Latest threat:" in output
+        assert "DENY" in output
+        assert "direct_injection" in output
+        assert "Direct Injection detected" in output
+
+    def test_at_most_3_latest_threats_shown(self):
+        """Only the 3 most recent threats should appear in the latest threats list."""
+        events = [
+            _make_prompt_scan_event(
+                "deny",
+                threat_type="direct_injection",
+                summary=f"threat-{i}",
+                minutes_ago=i,
+            )
+            for i in range(1, 6)  # 5 deny events
+        ]
+        output = format_summary(events, "last 24 hours")
+        assert "Latest threats:" in output
+        # Only first 3 (newest) should appear — threats are appended newest-first
+        assert "threat-1" in output
+        assert "threat-2" in output
+        assert "threat-3" in output
+        assert "threat-4" not in output
+        assert "threat-5" not in output
+
+    def test_no_latest_threats_section_when_all_pass(self):
+        events = [_make_prompt_scan_event("pass", minutes_ago=1)]
+        output = format_summary(events, "last 24 hours")
+        assert "Latest threat" not in output
+
+
+# ---------------------------------------------------------------------------
 # Test: posture computation
 # ---------------------------------------------------------------------------
 
@@ -514,6 +664,37 @@ class TestPostureComputation:
                 },
                 timestamp=_ts_minutes_ago(1),
             ),
+        ]
+        output = format_summary(events, "last 24 hours")
+        assert "Good" in output
+        assert "\u2713" in output
+
+    def test_prompt_scan_warn_does_not_affect_posture(self):
+        """Prompt scan WARN verdict must NOT trigger needs_attention."""
+        events = [
+            _make_prompt_scan_event("warn", threat_type="jailbreak", minutes_ago=1)
+        ]
+        output = format_summary(events, "last 24 hours")
+        assert "Good" in output
+        assert "\u2713" in output
+
+    def test_prompt_scan_deny_triggers_needs_attention(self):
+        """Prompt scan DENY verdict must trigger needs_attention."""
+        events = [
+            _make_prompt_scan_event(
+                "deny", threat_type="direct_injection", minutes_ago=1
+            )
+        ]
+        output = format_summary(events, "last 24 hours")
+        assert "Needs attention" in output
+        assert "\u26a0" in output
+
+    def test_prompt_scan_deny_failed_event_does_not_affect_posture(self):
+        """A prompt_scan event that itself failed (scanner error) must NOT affect posture."""
+        events = [
+            _make_prompt_scan_event(
+                "deny", threat_type="direct_injection", result="failed", minutes_ago=1
+            )
         ]
         output = format_summary(events, "last 24 hours")
         assert "Good" in output
@@ -754,6 +935,45 @@ class TestMixedCategories:
         verify_pos = output.index("--- Asset Verification ---")
         code_pos = output.index("--- Code Scanning ---")
         assert hardening_pos < verify_pos < code_pos
+
+    def test_combined_with_prompt_scan(self):
+        """Prompt Scan section appears after Sandbox Guard when all categories present."""
+        events = [
+            _make_event(
+                event_type="harden",
+                category="hardening",
+                result="succeeded",
+                details={
+                    "request": {"args": ["--scan"]},
+                    "result": {
+                        "mode": "scan",
+                        "passed": 48,
+                        "failed": 0,
+                        "total": 48,
+                        "failures": [],
+                    },
+                },
+                timestamp=_ts_minutes_ago(5),
+            ),
+            _make_prompt_scan_event(
+                "deny",
+                threat_type="indirect_injection",
+                summary="Injection attempt detected",
+                minutes_ago=2,
+            ),
+        ]
+        output = format_summary(events, "last 24 hours")
+
+        assert "--- Hardening ---" in output
+        assert "--- Prompt Scan ---" in output
+        assert "Total events: 2" in output
+
+        hardening_pos = output.index("--- Hardening ---")
+        prompt_pos = output.index("--- Prompt Scan ---")
+        assert hardening_pos < prompt_pos
+
+        # DENY verdict should flip posture to Needs attention
+        assert "Needs attention" in output
 
 
 # ---------------------------------------------------------------------------

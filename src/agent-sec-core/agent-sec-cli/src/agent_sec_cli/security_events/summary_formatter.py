@@ -40,6 +40,7 @@ def format_summary(events: list[SecurityEvent], time_label: str) -> str:
     asset_events = by_category.get("asset_verify", [])
     code_scan_events = by_category.get("code_scan", [])
     sandbox_events = by_category.get("sandbox", [])
+    prompt_scan_events = by_category.get("prompt_scan", [])
 
     if harden_events:
         sections.append(_summarize_hardening(harden_events))
@@ -49,8 +50,12 @@ def format_summary(events: list[SecurityEvent], time_label: str) -> str:
         sections.append(_summarize_code_scan(code_scan_events))
     if sandbox_events:
         sections.append(_summarize_sandbox(sandbox_events))
+    if prompt_scan_events:
+        sections.append(_summarize_prompt_scan(prompt_scan_events))
 
-    header = _compute_posture(harden_events, asset_events, time_label)
+    header = _compute_posture(
+        harden_events, asset_events, prompt_scan_events, time_label
+    )
     footer = _build_footer(events, harden_events)
     return "\n\n".join([header, *sections, footer])
 
@@ -112,6 +117,15 @@ def _get_mode(event: SecurityEvent) -> str:
         if "--scan" in args:
             return "scan"
     return ""
+
+
+def _format_timestamp(ts: str) -> str:
+    """Truncate ISO-8601 timestamp to seconds for inline display."""
+    try:
+        dt = datetime.fromisoformat(ts)
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return ts
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +256,54 @@ def _summarize_sandbox(events: list[SecurityEvent]) -> str:
     return "\n".join(lines)
 
 
+def _summarize_prompt_scan(events: list[SecurityEvent]) -> str:
+    """Summarize prompt_scan category events."""
+    lines = ["--- Prompt Scan ---"]
+
+    ok_count = 0
+    verdict_counts: dict[str, int] = defaultdict(int)
+    threat_type_counts: dict[str, int] = defaultdict(int)
+    latest_threats: list[SecurityEvent] = []
+
+    for e in events:
+        if e.result == "succeeded":
+            ok_count += 1
+            result = _get_result(e)
+            verdict = result.get("verdict", "unknown")
+            verdict_counts[verdict] += 1
+            if result.get("verdict") in ("warn", "deny"):
+                threat_type = result.get("threat_type", "unknown")
+                threat_type_counts[threat_type] += 1
+                if len(latest_threats) < 3:
+                    latest_threats.append(e)
+    fail_count = len(events) - ok_count
+
+    lines.append(
+        f"  Scans performed: {len(events)} (succeeded: {ok_count}, failed: {fail_count})"
+    )
+
+    if verdict_counts:
+        parts = [f"{v}: {c}" for v, c in sorted(verdict_counts.items())]
+        lines.append(f"  Verdict breakdown: {', '.join(parts)}")
+
+    if threat_type_counts:
+        threat_parts = [f"{t}: {c}" for t, c in sorted(threat_type_counts.items())]
+        lines.append(f"  Threat types: {', '.join(threat_parts)}")
+
+    if latest_threats:
+        lines.append("")
+        lines.append(f"  Latest threat{'s' if len(latest_threats) > 1 else ''}:")
+        for e in latest_threats:
+            result = _get_result(e)
+            verdict = result.get("verdict", "?").upper()
+            threat_type = result.get("threat_type", "unknown")
+            summary = result.get("summary", "")
+            ts = _format_timestamp(e.timestamp)
+            lines.append(f"    [{ts}] {verdict} — {threat_type}: {summary}")
+
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Posture and footer
 # ---------------------------------------------------------------------------
@@ -250,12 +312,13 @@ def _summarize_sandbox(events: list[SecurityEvent]) -> str:
 def _compute_posture(
     hardening_events: list[SecurityEvent],
     verify_events: list[SecurityEvent],
+    prompt_scan_events: list[SecurityEvent],
     time_label: str,
 ) -> str:
     """Compute overall security posture status.
 
-    Status is determined solely by the latest hardening and asset_verify
-    results.
+    Status is determined by the latest hardening, asset_verify, and
+    prompt_scan results.
     """
 
     needs_attention = False
@@ -280,6 +343,14 @@ def _compute_posture(
             result = _get_result(latest_verify)
             if result.get("failed", 0) > 0:
                 needs_attention = True
+
+    # --- Prompt Scan (any DENY verdict) ---
+    for e in prompt_scan_events:
+        if e.result == "succeeded":
+            result = _get_result(e)
+            if result.get("verdict") == "deny":
+                needs_attention = True
+                break
 
     # Determine status
     if needs_attention:
