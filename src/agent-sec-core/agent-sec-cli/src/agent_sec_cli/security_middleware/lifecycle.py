@@ -17,6 +17,7 @@ _ACTION_CATEGORY: dict[str, str] = {
     "verify": "asset_verify",
     "summary": "summary",
     "code_scan": "code_scan",
+    "prompt_scan": "prompt_scan",
     "skill_ledger": "skill_ledger",
 }
 

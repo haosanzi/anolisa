@@ -9,6 +9,9 @@ from agent_sec_cli.security_middleware.backends.code_scan import CodeScanBackend
 from agent_sec_cli.security_middleware.backends.hardening import (
     HardeningBackend,
 )
+from agent_sec_cli.security_middleware.backends.prompt_scan import (
+    PromptScanBackend,
+)
 from agent_sec_cli.security_middleware.backends.sandbox import SandboxBackend
 from agent_sec_cli.security_middleware.backends.skill_ledger import (
     SkillLedgerBackend,
@@ -25,6 +28,7 @@ _BACKEND_CLASSES: dict[str, type] = {
     "verify": AssetVerifyBackend,
     "summary": SummaryBackend,
     "code_scan": CodeScanBackend,
+    "prompt_scan": PromptScanBackend,
     "skill_ledger": SkillLedgerBackend,
 }
 
