@@ -7,10 +7,9 @@ from typing import Any
 
 import typer
 from agent_sec_cli.prompt_scanner.config import ScanMode
-from agent_sec_cli.prompt_scanner.exceptions import ScannerInputError
-from agent_sec_cli.prompt_scanner.logging.audit import AuditLogger
 from agent_sec_cli.prompt_scanner.result import Verdict
 from agent_sec_cli.prompt_scanner.scanner import PromptScanner
+from agent_sec_cli.security_middleware import invoke
 
 scanner_app = typer.Typer(
     name="scan-prompt", help="Prompt injection / jailbreak scanner"
@@ -87,6 +86,16 @@ def scan_prompt(
     input_file: str | None = typer.Option(
         None,
         "--input",
+        # Current behaviour: each non-empty line in the file is treated as an
+        # independent prompt and scanned separately.  This is intentionally
+        # designed for bulk red-team testing where a test corpus lists one
+        # attack payload per line.
+        #
+        # TODO: add a --input-full / --whole-file flag (or auto-detect via a
+        #       future --input-mode={lines,whole} option) so that the entire
+        #       file content is treated as a single prompt.  That mode is
+        #       needed when scanning a complete RAG document, a conversation
+        #       transcript, or any multi-paragraph text stored in a file.
         help="Path to a file containing prompts (one per line). "
         "If omitted, reads from stdin.",
     ),
@@ -152,40 +161,38 @@ def scan_prompt(
             raise typer.Exit(code=1)
         texts = [raw]
 
-    # --- Scan ---
-    try:
-        scanner = PromptScanner(mode=scan_mode)
-        results = scanner.scan_batch(texts)
-    except ScannerInputError as exc:
-        typer.echo(
-            json.dumps(
-                _build_error_output(f"Input error: {exc}"), indent=2, ensure_ascii=False
+    # --- Scan (via security_middleware for unified lifecycle/audit) ---
+    # Each text is scanned individually so that every invocation gets its own
+    # trace_id and SecurityEvent record.  This ensures precise per-input
+    # auditability: when a threat is detected, the audit log pinpoints exactly
+    # which input triggered it.  Batching would collapse multiple inputs into a
+    # single trace_id, losing that granularity without any performance benefit:
+    # under STANDARD/STRICT mode scan_batch() is sequential anyway because the
+    # HuggingFace tokenizer (Rust-backed, uses RefCell internally) is NOT
+    # thread-safe — all inference is serialised behind _inference_lock.
+    for t in texts:
+        try:
+            mw_result = invoke(
+                "prompt_scan",
+                text=t,
+                mode=mode,
+                source=source,
             )
-        )
-        raise typer.Exit(code=0)
-    except Exception as exc:
-        typer.echo(
-            json.dumps(
-                _build_error_output(f"Scanner error: {exc}"),
-                indent=2,
-                ensure_ascii=False,
+        except Exception as exc:
+            typer.echo(
+                json.dumps(
+                    _build_error_output(f"Scanner error: {exc}"),
+                    indent=2,
+                    ensure_ascii=False,
+                )
             )
-        )
-        raise typer.Exit(code=0)  # exit 0: scanner ran, verdict in JSON
+            raise typer.Exit(code=0)  # exit 0: scanner ran, verdict in JSON
 
-    # --- Audit ---
-    _audit = AuditLogger()
-    for result in results:
-        _audit.log_scan(result)
-        if result.is_threat:
-            _audit.log_threat(result)
-
-    # --- Output ---
-    for result in results:
+        # --- Output ---
         if output_format == "text":
-            _print_text(result.to_dict())
+            _print_text(mw_result.data)
         else:
-            typer.echo(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
+            typer.echo(mw_result.stdout)
 
     raise typer.Exit(code=0)
 

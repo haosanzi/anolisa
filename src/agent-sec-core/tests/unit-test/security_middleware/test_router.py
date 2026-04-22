@@ -24,6 +24,7 @@ def test_all_registered_actions_work():
         "verify",
         "summary",
         "code_scan",
+        "prompt_scan",
         "skill_ledger",
     ]
     for action in actions:
