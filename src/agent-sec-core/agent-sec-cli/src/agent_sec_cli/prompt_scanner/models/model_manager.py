@@ -16,13 +16,14 @@ ModelScope mirror IDs for Llama Prompt Guard 2:
 import logging
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import torch
 from agent_sec_cli.prompt_scanner.exceptions import ModelLoadError
 from agent_sec_cli.prompt_scanner.result import ThreatType
-from modelscope import snapshot_download
 from pydantic import BaseModel
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+if TYPE_CHECKING:
+    import torch
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +61,9 @@ class ModelManager:
 
     def __init__(self, cache_dir: str | None = None, device: str | None = None) -> None:
         self._cache_dir = cache_dir or self._DEFAULT_CACHE_DIR
-        self._device = device or self.detect_device()
+        # Defer device detection until first inference to avoid importing torch
+        # at module load time (which would slow down non-ML subcommands like code-scan).
+        self._device_cached: str | None = device
         # cache: model_name -> (model, tokenizer)
         self._loaded_models: dict[str, tuple[object, object]] = {}
         self._load_lock = threading.Lock()
@@ -107,8 +110,14 @@ class ModelManager:
 
     @property
     def device(self) -> str:
-        """The compute device used for inference (``cpu``, ``cuda``, ``mps``)."""
-        return self._device
+        """The compute device used for inference (``cpu``, ``cuda``, ``mps``).
+
+        Lazily detected on first access to avoid importing torch at module
+        load time when non-ML subcommands (e.g. code-scan) are invoked.
+        """
+        if self._device_cached is None:
+            self._device_cached = self.detect_device()
+        return self._device_cached
 
     # ------------------------------------------------------------------
     # Device detection
@@ -120,6 +129,8 @@ class ModelManager:
 
         Priority: CUDA > MPS (Apple Silicon) > CPU.
         """
+        import torch  # lazy import: only needed when actually running ML inference
+
         if torch.cuda.is_available():
             return "cuda"
         if torch.backends.mps.is_available():
@@ -155,6 +166,13 @@ class ModelManager:
             model_name,
         )
 
+        import torch  # lazy import: only needed when actually running ML inference
+        from modelscope import snapshot_download  # lazy import
+        from transformers import (  # lazy import
+            AutoModelForSequenceClassification,
+            AutoTokenizer,
+        )
+
         cache_dir = Path(self._cache_dir).expanduser()
         _ms_logger = logging.getLogger("modelscope")
         _orig_level = _ms_logger.level
@@ -170,12 +188,12 @@ class ModelManager:
 
         # --- load from local path ----------------------------------------
         log.info(
-            "Loading model from '%s' onto device '%s'.", local_model_path, self._device
+            "Loading model from '%s' onto device '%s'.", local_model_path, self.device
         )
         try:
             tokenizer = AutoTokenizer.from_pretrained(local_model_path)
             model = AutoModelForSequenceClassification.from_pretrained(local_model_path)
-            model.to(torch.device(self._device))
+            model.to(torch.device(self.device))
             model.eval()
         except Exception as exc:
             raise ModelLoadError(

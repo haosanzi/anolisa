@@ -16,13 +16,11 @@ separate INJECTION label; the model flags any malicious prompt
 import logging
 import threading
 
-import torch
 from agent_sec_cli.prompt_scanner.models.model_manager import (
     ClassifierResult,
     ModelManager,
 )
 from agent_sec_cli.prompt_scanner.result import ThreatType
-from torch.nn.functional import softmax
 
 log = logging.getLogger(__name__)
 
@@ -176,6 +174,9 @@ class PromptGuardClassifier:
             return []
         model, tokenizer = self._manager.load_model(self._model_name)
 
+        import torch  # lazy import: only needed when actually running ML inference
+        from torch.nn.functional import softmax  # lazy import
+
         with self._inference_lock:
             preprocessed = [self._preprocess(t, tokenizer) for t in texts]
             inputs = tokenizer(
@@ -228,6 +229,9 @@ class PromptGuardClassifier:
 
     def _get_probabilities(self, text: str, model: object, tokenizer: object) -> object:
         """Run a single forward pass and return the softmax probability tensor."""
+        import torch  # lazy import: only needed when actually running ML inference
+        from torch.nn.functional import softmax  # lazy import
+
         preprocessed = self._preprocess(text, tokenizer)
         inputs = tokenizer(  # type: ignore[operator]
             preprocessed,

@@ -193,9 +193,7 @@ class TestModelManagerDeviceDetect(unittest.TestCase):
         )
 
         fake_torch = _make_fake_torch(cuda=False, mps=False)
-        with patch(
-            "agent_sec_cli.prompt_scanner.models.model_manager.torch", fake_torch
-        ):
+        with patch.dict(sys.modules, {"torch": fake_torch}):
             self.assertEqual(ModelManager.detect_device(), "cpu")
 
     def test_returns_cuda_when_available(self) -> None:
@@ -204,9 +202,7 @@ class TestModelManagerDeviceDetect(unittest.TestCase):
         )
 
         fake_torch = _make_fake_torch(cuda=True, mps=False)
-        with patch(
-            "agent_sec_cli.prompt_scanner.models.model_manager.torch", fake_torch
-        ):
+        with patch.dict(sys.modules, {"torch": fake_torch}):
             self.assertEqual(ModelManager.detect_device(), "cuda")
 
     def test_returns_mps_when_cuda_unavailable(self) -> None:
@@ -215,9 +211,7 @@ class TestModelManagerDeviceDetect(unittest.TestCase):
         )
 
         fake_torch = _make_fake_torch(cuda=False, mps=True)
-        with patch(
-            "agent_sec_cli.prompt_scanner.models.model_manager.torch", fake_torch
-        ):
+        with patch.dict(sys.modules, {"torch": fake_torch}):
             self.assertEqual(ModelManager.detect_device(), "mps")
 
     def test_returns_cpu_when_neither(self) -> None:
@@ -226,9 +220,7 @@ class TestModelManagerDeviceDetect(unittest.TestCase):
         )
 
         fake_torch = _make_fake_torch(cuda=False, mps=False)
-        with patch(
-            "agent_sec_cli.prompt_scanner.models.model_manager.torch", fake_torch
-        ):
+        with patch.dict(sys.modules, {"torch": fake_torch}):
             self.assertEqual(ModelManager.detect_device(), "cpu")
 
 
@@ -270,8 +262,10 @@ class TestModelManagerCache(unittest.TestCase):
         )
 
         mgr = ModelManager(device="cpu")
-        with patch.dict(
-            sys.modules, {"torch": None, "transformers": None, "modelscope": None}
+        with patch.object(
+            mgr,
+            "_do_load",
+            side_effect=ModelLoadError("Missing ML dependencies"),
         ):
             with self.assertRaises(ModelLoadError):
                 mgr.load_model("some-model")
