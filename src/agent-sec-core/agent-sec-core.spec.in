@@ -79,7 +79,6 @@ The linux-sandbox binary provides secure sandboxed execution environments.
 %defattr(0644,root,root,0755)
 %attr(0755,root,root) /usr/local/bin/linux-sandbox
 %attr(0755,root,root) /usr/share/anolisa/extensions/*.py
-%attr(0755,root,root) /usr/share/anolisa/extensions/*.sh
 /usr/share/anolisa/extensions/
 
 # =============================================================================
