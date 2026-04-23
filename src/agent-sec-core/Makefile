@@ -134,8 +134,8 @@ install-openclaw-plugin: ## Install openclaw-plugin to target directory
 install-cosh-hook: ## Install cosh hooks (linux-sandbox + code_scanner_hook)
 	install -d -m 0755 $(DESTDIR)$(PREFIX)/bin
 	install -p -m 0755 linux-sandbox/target/release/linux-sandbox $(DESTDIR)$(PREFIX)/bin/
-	install -d -m 0755 $(DESTDIR)/usr/local/lib/anolisa/cosh_hooks
-	cp -rp cosh_hooks/. $(DESTDIR)/usr/local/lib/anolisa/cosh_hooks/
+	install -d -m 0755 $(DESTDIR)/usr/share/anolisa/extensions
+	cp -rp cosh_hooks/. $(DESTDIR)/usr/share/anolisa/extensions/
 
 .PHONY: install-all
 install-all: install-cli install-cosh-hook install-openclaw-plugin install-skills ## Install all components (local dev)
