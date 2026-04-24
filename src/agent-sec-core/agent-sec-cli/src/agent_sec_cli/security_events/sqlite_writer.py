@@ -56,6 +56,27 @@ _COLUMNS: dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
+# Error classification
+# ---------------------------------------------------------------------------
+# Only TRUE on-disk corruption markers justify a destructive rebuild.
+# Everything else (lock, busy, full, readonly, protocol, I/O) is transient
+# or environmental — skipping is mandatory, or concurrent writers wipe
+# legitimate data via false-positive rebuilds.
+_CORRUPTION_MARKERS: tuple[str, ...] = (
+    "malformed",  # SQLITE_CORRUPT: "database disk image is malformed"
+    "not a database",  # SQLITE_NOTADB: "file is not a database"
+    "file is encrypted",  # SQLITE_NOTADB variant: encrypted DB without key
+    "disk image",  # SQLITE_CORRUPT variant
+)
+
+
+def _is_corruption(exc: Exception) -> bool:
+    """Return True only for messages indicating true on-disk corruption."""
+    msg = str(exc).lower()
+    return any(marker in msg for marker in _CORRUPTION_MARKERS)
+
+
+# ---------------------------------------------------------------------------
 # Writer
 # ---------------------------------------------------------------------------
 
@@ -115,7 +136,13 @@ class SqliteEventWriter:
                     params,
                 )
             except sqlite3.DatabaseError as exc:
-                # Hard corruption — delete and retry once with fresh DB
+                # Only true on-disk corruption triggers destructive rebuild;
+                # transient errors (lock/busy/full/readonly) are skipped to
+                # avoid catastrophic data loss from false-positive rebuilds.
+                if not _is_corruption(exc):
+                    return
+
+                # True database corruption — delete and retry once with fresh DB
                 self._handle_corruption(exc)
                 if self._disabled:
                     return
@@ -225,6 +252,12 @@ class SqliteEventWriter:
 
                 return
             except sqlite3.DatabaseError as exc:
+                # Under concurrent load, PRAGMA/schema statements can raise
+                # OperationalError("database is locked"); treat any non-corruption
+                # error as transient and skip — only true corruption rebuilds.
+                if not _is_corruption(exc):
+                    self._conn = None
+                    return
                 self._handle_corruption(exc)
                 if self._disabled:
                     return  # unlink failed — give up
