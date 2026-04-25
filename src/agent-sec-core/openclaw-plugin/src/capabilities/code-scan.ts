@@ -38,8 +38,14 @@ export const codeScan: SecurityCapability = {
         const msg = `[code-scanner] Detected ${findings.length} issue(s):\n${descs.join("\n")}\n\nCommand: ${command}`;
 
         if (verdict === "deny") {
-          api.logger.info(`[scan-code] 🚫 DENY — blocking command`);
-          return { block: true, blockReason: msg };
+          api.logger.info(`[scan-code] 🚫 DENY — requiring user approval`);
+          return {
+            requireApproval: {
+              title: "Code Scanner Security Warning",
+              description: msg,
+              severity: "warning" as const,
+            },
+          };
         }
 
         if (verdict === "warn") {

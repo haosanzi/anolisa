@@ -2,7 +2,7 @@
 """Cosh hook script for code-scanner.
 
 Reads a cosh PreToolUse JSON from stdin, extracts the shell command,
-invokes ``agent-sec-cli code-scan`` via subprocess, and writes a cosh
+invokes ``agent-sec-cli scan-code`` via subprocess, and writes a cosh
 HookOutput JSON to stdout.
 
 Usage::
@@ -49,7 +49,7 @@ def _format_cosh(scan_result: dict) -> str:
     if verdict == "warn":
         return json.dumps({"decision": "ask", "systemMessage": msg}, ensure_ascii=False)
     if verdict == "deny":
-        return json.dumps({"decision": "block", "reason": msg}, ensure_ascii=False)
+        return json.dumps({"decision": "ask", "systemMessage": msg}, ensure_ascii=False)
     # error or unknown -> fail-open
     return json.dumps({"decision": "allow"})
 
