@@ -4,6 +4,10 @@ on:
   pull_request:
     branches:
       - 'release/agent-sec-core/**'
+  push:
+    branches:
+      - 'release/agent-sec-core/**'
+      - 'main'
   workflow_dispatch:       # 支持手动触发
 
 permissions:
