@@ -157,11 +157,8 @@ rm -rf $RPM_BUILD_ROOT
 make install-all-for-rpmbuild DESTDIR=$RPM_BUILD_ROOT
 
 %changelog
-* Tue Apr 14 2026 Xingdong Li <XingDong.Li@linux.alibaba.com> - 0.3.0-1
-- Switch agent-sec-cli build to maturin for Rust native extension support
-- Add python3-devel and python3-pip BuildRequires for maturin wheel building
-- Install agent-sec-cli as proper Python wheel with native .so extension
-- Remove legacy script copy to skill directory (now handled by pip install)
+* Sun Apr 26 2026 YiZheng Yang <YiZheng.Yang@linux.alibaba.com> - 0.3.0-1
+- Update version to 0.3.0
 
 * Mon Mar 23 2026 YiZheng Yang <YiZheng.Yang@linux.alibaba.com> - 0.0.8-1
 - Disable brp-mangle-shebangs to preserve #!/usr/bin/env bash for cross-platform compatibility
