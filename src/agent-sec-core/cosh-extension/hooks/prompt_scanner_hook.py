@@ -41,6 +41,10 @@ def _allow() -> str:
     return json.dumps({"decision": "allow"})
 
 
+# Keyword used by model_manager.py in the ModelLoadError message.
+_WARMUP_HINT = "agent-sec-cli scan-prompt warmup"
+
+
 def _format_cosh(scan_result: dict) -> str:
     """Convert a ScanResult dict into a cosh HookOutput JSON string.
 
@@ -48,7 +52,9 @@ def _format_cosh(scan_result: dict) -> str:
         verdict == "pass"  -> decision "allow"
         verdict == "warn"  -> decision "ask"  (let user decide)
         verdict == "deny"  -> decision "ask"  (let user decide)
-        otherwise          -> fail-open "allow"
+        verdict == "error"
+          + model not downloaded -> decision "ask" with warmup instructions
+          otherwise              -> fail-open "allow"
     """
     verdict = scan_result.get("verdict", "pass")
 
@@ -72,7 +78,23 @@ def _format_cosh(scan_result: dict) -> str:
             {"decision": "ask", "reason": msg},
             ensure_ascii=False,
         )
-    # error or unknown -> fail-open
+    # error verdict — check whether it is a "model not downloaded" error.
+    # Use "ask" so the user can still send the prompt; the reason text makes
+    # it clear this is a setup reminder, not a security block.
+    if verdict == "error" and _WARMUP_HINT in summary:
+        warmup_msg = (
+            "[prompt-scanner] ⚠️  安全扫描组件尚未完成初始化，本次 prompt 未经安全检测。\n"
+            "需要一次性下载本地检测小模型才能启用扫描功能。\n"
+            "请在终端执行以下命令完成下载，之后无需再次操作：\n"
+            "  agent-sec-cli scan-prompt warmup\n"
+            "\n"
+            "你仍可以选择继续发送（Yes），或取消（No）后先完成下载。"
+        )
+        return json.dumps(
+            {"decision": "ask", "reason": warmup_msg},
+            ensure_ascii=False,
+        )
+    # other error or unknown verdict -> fail-open
     return json.dumps({"decision": "allow"})
 
 
