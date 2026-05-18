@@ -28,7 +28,7 @@ import type {
 import { normalizePatchContent } from './memoryPatchUtils.js';
 import { extractSessionIdFromChatFilePath } from './sessionAdapter.js';
 import * as Diff from 'diff';
-import * as fs from 'node:fs';
+import * as fs from 'node:fs/promises';
 
 export interface SkillExtractionAgentConfig {
   promptConfig: PromptConfig;
@@ -401,7 +401,7 @@ export function createExtractionHooks(
       // Read the written patch and validate
       let content: string;
       try {
-        content = fs.readFileSync(filePath, 'utf-8');
+        content = await fs.readFile(filePath, 'utf-8');
       } catch {
         return;
       }
@@ -420,7 +420,7 @@ export function createExtractionHooks(
           };
         }
         // Patch is valid — overwrite with normalized version to ensure it passes future validation
-        fs.writeFileSync(filePath, normalized, 'utf-8');
+        await fs.writeFile(filePath, normalized, 'utf-8');
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         return {

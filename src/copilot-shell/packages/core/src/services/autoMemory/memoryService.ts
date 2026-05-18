@@ -15,7 +15,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { constants as fsConstants } from 'node:fs';
-import type { Dirent } from 'node:fs';
+import type { Dirent, Stats } from 'node:fs';
 import * as Diff from 'diff';
 import type { Config } from '../../config/config.js';
 import { SubAgentScope, ContextState } from '../../subagents/subagent.js';
@@ -69,6 +69,115 @@ function isLockInfo(value: unknown): value is LockInfo {
 // --- Lock management ---
 
 /**
+ * Inspects the lock file: returns its stat and whether it's stale.
+ * Returns null if the file doesn't exist or can't be read.
+ */
+async function inspectLock(
+  lockPath: string,
+): Promise<{ stat: Stats; isStale: boolean } | null> {
+  let stat: Stats;
+  let content: string;
+  try {
+    stat = await fs.stat(lockPath);
+    content = await fs.readFile(lockPath, 'utf-8');
+  } catch {
+    return null;
+  }
+
+  let info: LockInfo | null = null;
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (isLockInfo(parsed)) info = parsed;
+  } catch {
+    // Malformed JSON — treat as stale below.
+  }
+
+  if (!info) {
+    return { stat, isStale: true };
+  }
+
+  try {
+    process.kill(info.pid, 0);
+  } catch {
+    return { stat, isStale: true };
+  }
+
+  const lockAge = Date.now() - new Date(info.startedAt).getTime();
+  return { stat, isStale: lockAge > LOCK_STALE_MS };
+}
+
+/**
+ * Outcome of a stale-lock takeover attempt.
+ * - 'taken'    : We renamed the stale lock away and verified its identity by inode.
+ * - 'vanished' : The lock disappeared mid-takeover (rename hit ENOENT). A
+ *                concurrent winner is mid-flight; the caller may retry the
+ *                fast-path O_EXCL safely since O_EXCL itself serializes.
+ * - 'busy'     : Either the lock isn't actually stale, another caller won the
+ *                takeover, or we accidentally moved a fresh lock and restored
+ *                it. Caller should not retry.
+ */
+type TakeoverOutcome = 'taken' | 'vanished' | 'busy';
+
+/**
+ * Atomically reclaims a stale lock without a TOCTOU window.
+ *
+ * Uses rename (which is atomic — only one caller's rename for a given source
+ * path can succeed) instead of the unsafe `unlink + create` dance. After
+ * renaming, verifies the moved file's inode matches the stale lock we observed;
+ * if a fresh lock was created during the race window we'd have moved that one
+ * instead, so we attempt to put it back via link (fails without overwriting).
+ *
+ * Platform note: relies on POSIX-style `rename` atomicity and `stat.ino`
+ * stability. Holds on Linux (ext4/btrfs/xfs), macOS (APFS), and Windows NTFS
+ * (single-volume). Pathological filesystems that report unstable or zero
+ * inodes could weaken the inode check, but the rename atomicity alone still
+ * prevents the most common double-takeover race.
+ */
+async function takeoverStaleLock(lockPath: string): Promise<TakeoverOutcome> {
+  const inspection = await inspectLock(lockPath);
+  if (!inspection || !inspection.isStale) return 'busy';
+
+  const trashPath = `${lockPath}.takeover-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try {
+    await fs.rename(lockPath, trashPath);
+  } catch (error: unknown) {
+    if (isNodeError(error) && error.code === 'ENOENT') {
+      // Another process already moved the stale lock; their O_EXCL create
+      // is racing with ours. Signal the caller to retry the fast path.
+      return 'vanished';
+    }
+    return 'busy';
+  }
+
+  let movedStat: Stats;
+  try {
+    movedStat = await fs.stat(trashPath);
+  } catch {
+    // Couldn't verify identity of what we moved — best-effort cleanup of trash
+    // and bail. We don't attempt to restore because we can't tell whether the
+    // moved file was the stale lock or a fresh one.
+    await fs.unlink(trashPath).catch(() => {});
+    return 'busy';
+  }
+
+  if (movedStat.ino !== inspection.stat.ino) {
+    // A fresh lock was created in the gap between our stat and our rename,
+    // so we accidentally moved away a legitimate live lock. Restore it via
+    // link, which fails (without overwriting) if a newer lock now exists.
+    try {
+      await fs.link(trashPath, lockPath);
+    } catch {
+      // Best-effort restore failed; leave the situation to settle naturally.
+    }
+    await fs.unlink(trashPath).catch(() => {});
+    return 'busy';
+  }
+
+  await fs.unlink(trashPath).catch(() => {});
+  return 'taken';
+}
+
+/**
  * Attempts to acquire an exclusive lock file using O_CREAT | O_EXCL.
  */
 export async function tryAcquireLock(
@@ -93,10 +202,16 @@ export async function tryAcquireLock(
     return true;
   } catch (error: unknown) {
     if (isNodeError(error) && error.code === 'EEXIST') {
-      if (retries > 0 && (await isLockStale(lockPath))) {
-        debugLogger.debug('Cleaning up stale lock file');
-        await releaseLock(lockPath);
-        return tryAcquireLock(lockPath, retries - 1);
+      if (retries > 0) {
+        const outcome = await takeoverStaleLock(lockPath);
+        if (outcome === 'taken') {
+          debugLogger.debug('Reclaimed stale lock via atomic takeover');
+          return tryAcquireLock(lockPath, retries - 1);
+        }
+        if (outcome === 'vanished') {
+          debugLogger.debug('Lock vanished mid-takeover, retrying fast path');
+          return tryAcquireLock(lockPath, retries - 1);
+        }
       }
       debugLogger.debug('Lock held by another instance, skipping');
       return false;
@@ -109,30 +224,8 @@ export async function tryAcquireLock(
  * Checks if a lock file is stale (owner PID is dead or lock is too old).
  */
 export async function isLockStale(lockPath: string): Promise<boolean> {
-  try {
-    const content = await fs.readFile(lockPath, 'utf-8');
-    const parsed: unknown = JSON.parse(content);
-    if (!isLockInfo(parsed)) {
-      return true;
-    }
-
-    // Check if PID is still alive
-    try {
-      process.kill(parsed.pid, 0);
-    } catch {
-      return true;
-    }
-
-    // Check if lock is too old
-    const lockAge = Date.now() - new Date(parsed.startedAt).getTime();
-    if (lockAge > LOCK_STALE_MS) {
-      return true;
-    }
-
-    return false;
-  } catch {
-    return true;
-  }
+  const inspection = await inspectLock(lockPath);
+  return inspection ? inspection.isStale : true;
 }
 
 /**
