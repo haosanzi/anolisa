@@ -142,20 +142,26 @@ class PromptScanCapability(AgentSecCoreCapability):
     # ------------------------------------------------------------------
 
     def _scan_text(self, text: str) -> dict[str, Any] | None:
-        """Run agent-sec-cli scan-prompt and parse its JSON output."""
+        """Run agent-sec-cli scan-prompt and parse its JSON output.
+
+        The prompt text is piped via stdin instead of being passed as an
+        ``--text`` argv to avoid two issues:
+        1. ARG_MAX (~2MB on Linux) — large RAG-injected / multi-turn prompts
+           would trigger E2BIG and silently fail-open.
+        2. ``ps aux`` / ``/proc/<pid>/cmdline`` leakage — argv is world-readable
+           on the same host while the subprocess is alive.
+        """
         args = [
             "scan-prompt",
             "--mode",
             _SCAN_MODE,
-            "--text",
-            text,
             "--format",
             "json",
             "--source",
             _USER_INPUT_SOURCE,
         ]
 
-        result = call_agent_sec_cli(args, timeout=self._timeout)
+        result = call_agent_sec_cli(args, timeout=self._timeout, stdin=text)
         if result.exit_code != 0:
             logger.warning(
                 f"[agent-sec-core] {self.id} agent-sec-cli exit_code={result.exit_code}, fail-open"

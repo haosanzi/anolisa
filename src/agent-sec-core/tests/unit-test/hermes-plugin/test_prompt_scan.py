@@ -191,18 +191,21 @@ class TestPromptScanCapability:
 
         cap._on_pre_llm_call(user_message="hello", session_id="session-1")
 
+        # Prompt text must NOT appear in argv (avoids ARG_MAX & ps aux leakage);
+        # it is delivered via stdin instead.
         call_args = mock_cli.call_args[0][0]
         assert call_args == [
             "scan-prompt",
             "--mode",
             "standard",
-            "--text",
-            "hello",
             "--format",
             "json",
             "--source",
             "user_input",
         ]
+        assert "--text" not in call_args
+        assert "hello" not in call_args
+        assert mock_cli.call_args.kwargs["stdin"] == "hello"
 
     @patch("src.capabilities.prompt_scan.call_agent_sec_cli")
     def test_extracts_last_user_message_from_messages(self, mock_cli, capability):
@@ -218,8 +221,8 @@ class TestPromptScanCapability:
         )
 
         call_args = mock_cli.call_args[0][0]
-        assert "--text" in call_args
-        assert call_args[call_args.index("--text") + 1] == "new text"
+        assert "--text" not in call_args
+        assert mock_cli.call_args.kwargs["stdin"] == "new text"
 
     @patch("src.capabilities.prompt_scan.call_agent_sec_cli")
     def test_missing_cache_key_fails_open(self, mock_cli, capability):
