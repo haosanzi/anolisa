@@ -9,9 +9,13 @@ from pydantic import BaseModel, Field
 class ScanMode(str, Enum):
     """Predefined detection mode presets.
 
-    - FAST:     L1 only.  Latency < 5ms.   Real-time chat scenarios.
-    - STANDARD: L1 + L2.  Latency 20-80ms. Recommended for most production use.
-    - STRICT:   L1+L2+L3. Latency 50-200ms. High-security (finance, healthcare).
+    - FAST:         L1 only.  Latency < 5ms.   Real-time chat scenarios.
+    - STANDARD:     L1 + L2.  Latency 20-80ms. Recommended for most production use.
+    - STRICT:       L1+L2+L3. Latency 50-200ms. High-security (finance, healthcare).
+    - INTENT_CHAIN: L4 only.  Multi-turn intent recognition over a full
+                    conversation triple (history, current query, assistant
+                    response).  Routed to the intent-server sidecar so a 4B
+                    model is loaded once per machine instead of per scan.
 
     Note: L3 (semantic vector search) is planned but not yet implemented.
     STRICT mode is reserved for future use.
@@ -20,6 +24,7 @@ class ScanMode(str, Enum):
     FAST = "fast"
     STANDARD = "standard"
     STRICT = "strict"
+    INTENT_CHAIN = "intent_chain"
 
 
 class ScanConfig(BaseModel):
@@ -61,6 +66,13 @@ PRESET_CONFIGS: dict[ScanMode, ScanConfig] = {
     # STRICT preset is kept as a placeholder for future use.
     ScanMode.STRICT: ScanConfig(
         layers=["rule_engine", "ml_classifier"],
+        fast_fail=False,
+    ),
+    # L4 multi-turn intent detection — runs only the multi_turn_intent
+    # detector.  Decoupled from L1-L3 because it consumes a richer input
+    # (conversation triple) and is served by a long-running sidecar.
+    ScanMode.INTENT_CHAIN: ScanConfig(
+        layers=["multi_turn_intent"],
         fast_fail=False,
     ),
 }

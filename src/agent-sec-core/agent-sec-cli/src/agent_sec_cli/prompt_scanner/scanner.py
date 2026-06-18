@@ -9,6 +9,11 @@ from typing import Any
 from agent_sec_cli.prompt_scanner.config import ScanConfig, ScanMode, get_config
 from agent_sec_cli.prompt_scanner.detectors.base import DetectionLayer
 from agent_sec_cli.prompt_scanner.detectors.ml_classifier import MLClassifier
+from agent_sec_cli.prompt_scanner.detectors.multi_turn_intent import (
+    META_ASSISTANT_RESPONSE,
+    META_HISTORY,
+    MultiTurnIntentDetector,
+)
 from agent_sec_cli.prompt_scanner.detectors.rule_engine import RuleEngine
 from agent_sec_cli.prompt_scanner.exceptions import (
     LayerNotAvailableError,
@@ -30,12 +35,14 @@ log = logging.getLogger(__name__)
 _DETECTOR_REGISTRY: dict[str, type[DetectionLayer]] = {
     "rule_engine": RuleEngine,
     "ml_classifier": MLClassifier,
+    "multi_turn_intent": MultiTurnIntentDetector,
 }
 
 # Detectors that can be skipped silently when unavailable.
 # L1 (rule_engine) and L2 (ml_classifier) are mandatory — their deps ship
-# with the package.  Only future optional layers (e.g. L3 semantic) go here.
-_OPTIONAL_DETECTORS = frozenset({"semantic"})
+# with the package.  L4 multi_turn_intent depends on a separately downloaded
+# Qwen3-4B checkpoint so it must degrade gracefully.
+_OPTIONAL_DETECTORS = frozenset({"semantic", "multi_turn_intent"})
 
 
 class PromptScanner:
@@ -130,6 +137,59 @@ class PromptScanner:
         is_threat = verdict in (Verdict.WARN, Verdict.DENY)
 
         elapsed = (time.perf_counter() - t0) * 1000  # ms
+
+        return ScanResult(
+            is_threat=is_threat,
+            threat_type=threat_type,
+            layer_results=layer_results,
+            latency_ms=elapsed,
+            metadata=metadata,
+            verdict=verdict,
+        )
+
+    def scan_conversation(
+        self,
+        history: list[dict],
+        current_query: str,
+        assistant_response: str,
+        source: str | None = None,
+    ) -> ScanResult:
+        """Multi-turn entry point used by INTENT_CHAIN mode.
+
+        Args:
+            history: Prior turns as ``[{"role": "user"/"assistant", "content": ...}]``.
+            current_query: The user's latest prompt.
+            assistant_response: The assistant's reply that just got generated.
+            source: Optional label (e.g. ``"cosh_after_model"``).
+
+        Returns:
+            ScanResult shaped like ``scan()`` but built from the
+            ``multi_turn_intent`` layer's verdict.
+        """
+        if not current_query or not current_query.strip():
+            raise ScannerInputError("current_query must not be empty.")
+
+        t0 = time.perf_counter()
+        prep = self._preprocessor.preprocess(current_query)
+        metadata: dict[str, Any] = prep.metadata
+        if source:
+            metadata["source"] = source
+        if prep.decoded_variants:
+            metadata["decoded_variants"] = prep.decoded_variants
+        metadata[META_HISTORY] = history
+        metadata[META_ASSISTANT_RESPONSE] = assistant_response
+
+        layer_results: list[LayerResult] = []
+        for detector in self._detectors:
+            lr = detector.detect(prep.normalized_text, metadata)
+            layer_results.append(lr)
+            if self._config.fast_fail and lr.detected:
+                break
+
+        verdict = determine_verdict(layer_results)
+        threat_type = self._determine_threat_type(layer_results)
+        is_threat = verdict in (Verdict.WARN, Verdict.DENY)
+        elapsed = (time.perf_counter() - t0) * 1000
 
         return ScanResult(
             is_threat=is_threat,

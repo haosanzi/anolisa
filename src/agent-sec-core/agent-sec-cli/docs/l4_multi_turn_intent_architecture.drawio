@@ -1,0 +1,161 @@
+<mxfile host="app.diagrams.net" modified="2026-06-02T12:00:00.000Z" agent="AgentSecCore" version="24.0.0" type="device">
+  <diagram id="prompt-scanner-arch" name="PromptScanner 系统架构">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ====== Title ====== -->
+        <mxCell id="title" value="PromptScanner 系统架构" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="550" y="20" width="500" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="AgentSecCore · 多层防御 + L4 多轮意图识别 + Code Agent Hook 集成" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=13;fontColor=#607d8b;" vertex="1" parent="1">
+          <mxGeometry x="450" y="60" width="700" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ====== LEFT: Code Agent Zone ====== -->
+        <mxCell id="agent-zone" value="Code Agent" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;fontStyle=1;fontSize=16;fontColor=#2e7d32;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;arcSize=6;align=center;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="320" height="700" as="geometry" />
+        </mxCell>
+
+        <!-- cosh -->
+        <mxCell id="cosh" value="&lt;b style='font-size:14px'&gt;cosh&lt;/b&gt;&lt;br&gt;Claude Code 扩展&lt;br&gt;&lt;font face='monospace' style='font-size:10px'&gt;cosh-extension.json&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#388e3c;strokeWidth=1.5;fontSize=11;verticalAlign=middle;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="70" y="160" width="260" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- openclaw -->
+        <mxCell id="openclaw" value="&lt;b style='font-size:14px'&gt;openclaw&lt;/b&gt;&lt;br&gt;Code Agent 插件&lt;br&gt;&lt;font face='monospace' style='font-size:10px'&gt;openclaw.plugin.json&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#388e3c;strokeWidth=1.5;fontSize=11;verticalAlign=middle;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="70" y="290" width="260" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- Hooks -->
+        <mxCell id="hooks" value="&lt;b style='font-size:13px;color:#ef6c00'&gt;Hook 集成层&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;UserPromptSubmit&lt;/b&gt;&lt;br&gt;→ 触发 L1 / L2 / L3 扫描&lt;br&gt;&lt;br&gt;&lt;b style='color:#e65100'&gt;AfterModel&lt;/b&gt;&lt;br&gt;→ 触发 L4 多轮意图检测&lt;br&gt;&lt;br&gt;&lt;font color='#888'&gt;fail-open · 异常不阻断会话&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#ef6c00;strokeWidth=2;fontSize=11;verticalAlign=middle;arcSize=8;align=center;" vertex="1" parent="1">
+          <mxGeometry x="70" y="430" width="260" height="200" as="geometry" />
+        </mxCell>
+
+        <!-- Agent internal arrow -->
+        <mxCell id="agent-internal-arr" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9e9e9e;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="cosh" target="openclaw" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="agent-internal-arr2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9e9e9e;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="openclaw" target="hooks" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ====== CENTER: PromptScanner Zone ====== -->
+        <mxCell id="scanner-zone" value="PromptScanner" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;fontStyle=1;fontSize=16;fontColor=#37474f;fillColor=#fafafa;strokeColor=#37474f;strokeWidth=2.5;arcSize=6;align=center;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="440" y="100" width="460" height="700" as="geometry" />
+        </mxCell>
+        <mxCell id="scanner-subtitle" value="agent-sec-cli · security_middleware" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=11;fontColor=#78909c;" vertex="1" parent="1">
+          <mxGeometry x="530" y="135" width="280" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- L1 -->
+        <mxCell id="L1" value="&lt;b style='font-size:13px;color:#43a047'&gt;L1&lt;/b&gt;&amp;nbsp;&amp;nbsp;&lt;b&gt;Rule Engine&lt;/b&gt;&lt;br&gt;正则 / 关键词匹配" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#43a047;strokeWidth=2;fontSize=11;verticalAlign=middle;arcSize=10;align=left;spacingLeft=15;" vertex="1" parent="1">
+          <mxGeometry x="470" y="180" width="340" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="L1-latency" value="&lt; 5ms" style="text;html=1;align=right;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#43a047;" vertex="1" parent="1">
+          <mxGeometry x="740" y="195" width="60" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- L2 -->
+        <mxCell id="L2" value="&lt;b style='font-size:13px;color:#1e88e5'&gt;L2&lt;/b&gt;&amp;nbsp;&amp;nbsp;&lt;b&gt;ML Classifier&lt;/b&gt;&lt;br&gt;Prompt-Guard-2 (86M)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#1e88e5;strokeWidth=2;fontSize=11;verticalAlign=middle;arcSize=10;align=left;spacingLeft=15;" vertex="1" parent="1">
+          <mxGeometry x="470" y="280" width="340" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="L2-latency" value="20-80ms" style="text;html=1;align=right;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#1e88e5;" vertex="1" parent="1">
+          <mxGeometry x="720" y="295" width="80" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- L3 -->
+        <mxCell id="L3" value="&lt;b style='font-size:13px;color:#8e24aa'&gt;L3&lt;/b&gt;&amp;nbsp;&amp;nbsp;&lt;b style='color:#999'&gt;Semantic&lt;/b&gt;&lt;br&gt;&lt;font color='#999'&gt;向量语义检索（规划中）&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#8e24aa;strokeWidth=1.5;dashed=1;fontSize=11;verticalAlign=middle;arcSize=10;align=left;spacingLeft=15;" vertex="1" parent="1">
+          <mxGeometry x="470" y="380" width="340" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="L3-latency" value="—" style="text;html=1;align=right;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=10;fontColor=#999;" vertex="1" parent="1">
+          <mxGeometry x="760" y="395" width="30" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- L4 (highlight) -->
+        <mxCell id="L4" value="&lt;b style='font-size:14px;color:#ef6c00'&gt;L4&lt;/b&gt;&amp;nbsp;&amp;nbsp;&lt;b style='font-size:13px'&gt;Multi-Turn Intent&lt;/b&gt;&lt;br&gt;TurnGate · Qwen3-4B" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#ef6c00;strokeWidth=3;fontSize=11;verticalAlign=middle;arcSize=10;align=left;spacingLeft=15;" vertex="1" parent="1">
+          <mxGeometry x="470" y="490" width="340" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="L4-latency" value="~600ms" style="text;html=1;align=right;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#ef6c00;" vertex="1" parent="1">
+          <mxGeometry x="730" y="510" width="70" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- ScanResult -->
+        <mxCell id="scanresult" value="&lt;b&gt;ScanResult → pass / warn / deny&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8eaf6;strokeColor=#283593;strokeWidth=2;fontSize=12;fontColor=#283593;verticalAlign=middle;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="510" y="620" width="310" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- L4 -> ScanResult -->
+        <mxCell id="l4-to-result" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#bdbdbd;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="L4" target="scanresult" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ====== RIGHT: L4 Sidecar Zone ====== -->
+        <mxCell id="sidecar-zone" value="L4 intent-server" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;fontStyle=1;fontSize=15;fontColor=#e65100;fillColor=#fff8e1;strokeColor=#e65100;strokeWidth=2.5;arcSize=6;align=center;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="100" width="360" height="700" as="geometry" />
+        </mxCell>
+        <mxCell id="sidecar-subtitle" value="独立 sidecar 进程 · 每机一实例" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=11;fontColor=#8a6d00;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="135" width="280" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- HTTP Server -->
+        <mxCell id="http-server" value="&lt;b style='font-size:13px;color:#e65100'&gt;HTTP Server&lt;/b&gt;&lt;br&gt;localhost 回环通信&lt;br&gt;&lt;font face='monospace' style='font-size:10px'&gt;/classify · /health&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e65100;strokeWidth=1.8;fontSize=11;verticalAlign=middle;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="180" width="300" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Model -->
+        <mxCell id="model" value="&lt;b style='font-size:13px;color:#bf360c'&gt;TurnGate Qwen3-4B&lt;/b&gt;&lt;br&gt;&lt;br&gt;自训练端侧模型（RL 微调）&lt;br&gt;logit 判定 · p_harmful &gt; 0.55&lt;br&gt;cpu / cuda / mps 自适应" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe0b2;strokeColor=#bf360c;strokeWidth=2;fontSize=11;verticalAlign=middle;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="340" width="300" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- Lifecycle -->
+        <mxCell id="lifecycle" value="&lt;b style='font-size:12px;color:#6d5a3a'&gt;生命周期管理&lt;/b&gt;&lt;br&gt;&lt;br&gt;懒启动 · idle 30min 自动退出&lt;br&gt;PID / PORT 文件协调" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9e8a6b;strokeWidth=1.5;dashed=1;fontSize=11;verticalAlign=middle;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="540" width="300" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- HTTP -> Model arrow -->
+        <mxCell id="http-to-model" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#bdbdbd;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="http-server" target="model" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ====== Connecting Arrows ====== -->
+
+        <!-- Hook -> PromptScanner (request flow) -->
+        <mxCell id="hook-to-scanner" value="stdin JSON" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#ef6c00;strokeWidth=2.5;fontStyle=1;fontSize=10;fontColor=#ef6c00;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="hooks" target="L4" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- L4 -> Sidecar (POST /classify) -->
+        <mxCell id="l4-to-sidecar" value="POST /classify" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#ef6c00;strokeWidth=2.5;fontStyle=1;fontSize=10;fontColor=#ef6c00;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="L4" target="http-server" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Sidecar -> L4 verdict (return, dashed green) -->
+        <mxCell id="sidecar-to-l4" value="verdict" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#2e7d32;strokeWidth=2;dashed=1;dashPattern=8 4;fontStyle=1;fontSize=10;fontColor=#2e7d32;exitX=0;exitY=0.8;exitDx=0;exitDy=0;entryX=1;entryY=0.8;entryDx=0;entryDy=0;" edge="1" source="http-server" target="L4" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ScanResult -> Hook (decision return, dashed green) -->
+        <mxCell id="result-to-hook" value="decision (ask / 放行)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#2e7d32;strokeWidth=2;dashed=1;dashPattern=8 4;fontStyle=1;fontSize=10;fontColor=#2e7d32;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.9;entryDx=0;entryDy=0;" edge="1" source="scanresult" target="hooks" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ====== Legend ====== -->
+        <mxCell id="legend-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#cfd8dc;strokeWidth=1.5;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="720" width="360" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-title" value="&lt;b&gt;图例&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=11;fontColor=#333;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="725" width="50" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-req" value="&lt;font color='#ef6c00'&gt;━━▶&lt;/font&gt;  请求流（正向）" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="748" width="180" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-ret" value="&lt;font color='#2e7d32'&gt;- - -▶&lt;/font&gt;  结果回传" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="768" width="160" height="20" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

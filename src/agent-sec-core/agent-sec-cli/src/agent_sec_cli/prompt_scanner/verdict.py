@@ -18,7 +18,10 @@ from agent_sec_cli.prompt_scanner.result import LayerResult, Verdict
 # Layers whose detection is treated as a confirmed threat → DENY.
 # L1 (rule_engine) alone → WARN because regex has a higher false-positive
 # rate and its signal should be confirmed by L2 when L2 is present.
-_CONFIRM_LAYERS = frozenset({"ml_classifier"})
+# L4 multi_turn_intent is a fine-tuned classifier and is treated as
+# authoritative for its own dimension (multi-turn jailbreak) — its hit
+# directly maps to DENY.
+_CONFIRM_LAYERS = frozenset({"ml_classifier", "multi_turn_intent"})
 
 
 def determine_verdict(layer_results: list[LayerResult]) -> Verdict:

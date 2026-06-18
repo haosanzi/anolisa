@@ -1,7 +1,12 @@
 """CLI entry point for the prompt scanner (scan-prompt command)."""
 
 import json
+import os
+import signal
+import subprocess
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +16,15 @@ from agent_sec_cli.daemon.client import DaemonClient
 from agent_sec_cli.daemon.env import daemon_disabled
 from agent_sec_cli.daemon.protocol import DaemonResponse
 from agent_sec_cli.prompt_scanner.config import ScanMode
+from agent_sec_cli.prompt_scanner.intent_server.paths import (
+    LOG_FILE,
+    PID_FILE,
+    PORT_FILE,
+    is_pid_alive,
+    model_path,
+    read_pid,
+    read_port,
+)
 from agent_sec_cli.prompt_scanner.result import Verdict
 from agent_sec_cli.prompt_scanner.scanner import PromptScanner
 from agent_sec_cli.security_middleware import invoke
@@ -19,6 +33,11 @@ scanner_app = typer.Typer(
     name="scan-prompt", help="Prompt injection / jailbreak scanner"
 )
 DAEMON_REQUEST_TIMEOUT_MS = 30_000
+intent_server_app = typer.Typer(
+    name="intent-server",
+    help="Manage the long-running multi-turn intent classifier sidecar.",
+)
+scanner_app.add_typer(intent_server_app, name="intent-server")
 
 
 @scanner_app.command("warmup")
@@ -64,13 +83,251 @@ def _build_error_output(message: str) -> dict[str, Any]:
     }
 
 
+@scanner_app.command("conversation")
+def scan_conversation_cmd(
+    stdin_flag: bool = typer.Option(
+        False,
+        "--stdin",
+        help="Read JSON {history, current_query, assistant_response, [session_id]} from stdin.",
+    ),
+    output_format: str = typer.Option(
+        "json",
+        "--format",
+        help="Output format: 'json' (default) or 'text'.",
+    ),
+    source: str = typer.Option(
+        "cosh_after_model",
+        "--source",
+        help="Label for the input origin (default: cosh_after_model).",
+    ),
+) -> None:
+    """Scan a multi-turn conversation triple (INTENT_CHAIN mode).
+
+    Always runs the L4 ``multi_turn_intent`` detector against
+    ``(history, current_query, assistant_response)`` — the format the
+    TurnGate-style fine-tuned classifier expects.  Designed to be invoked
+    from the ``AfterModel`` cosh hook.
+
+    Examples::
+
+        echo '{"history":[...],"current_query":"...","assistant_response":"..."}' | \\
+            agent-sec-cli scan-prompt conversation --stdin
+    """
+    if not stdin_flag:
+        typer.echo(
+            "Error: --stdin is required (pipe a JSON payload).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if output_format not in ("json", "text"):
+        typer.echo(f"Error: Invalid format '{output_format}'.", err=True)
+        raise typer.Exit(code=1)
+
+    raw = sys.stdin.read().strip()
+    if not raw:
+        typer.echo("Error: No input received from stdin.", err=True)
+        raise typer.Exit(code=1)
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, ValueError) as exc:
+        typer.echo(f"Error: Invalid JSON: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+    history = payload.get("history") or []
+    current_query = payload.get("current_query") or ""
+    assistant_response = payload.get("assistant_response") or ""
+    if not isinstance(history, list) or not isinstance(current_query, str):
+        typer.echo(
+            "Error: payload must include a 'history' list and 'current_query' string.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if not current_query.strip():
+        typer.echo("Error: current_query is empty.", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        mw_result = invoke(
+            "prompt_scan",
+            text=current_query,
+            mode=ScanMode.INTENT_CHAIN,
+            source=source,
+            history=history,
+            assistant_response=assistant_response,
+        )
+    except Exception as exc:
+        typer.echo(
+            json.dumps(
+                _build_error_output(f"Scanner error: {exc}"),
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        raise typer.Exit(code=0)
+
+    if output_format == "text":
+        if not mw_result.data:
+            typer.echo(f"Error: {mw_result.error}", err=True)
+            raise typer.Exit(code=mw_result.exit_code)
+        _print_text(mw_result.data)
+    else:
+        typer.echo(mw_result.stdout)
+    raise typer.Exit(code=0)
+
+
+# ---------------------------------------------------------------------------
+# Sub-command group: intent-server (manage the long-running sidecar)
+# ---------------------------------------------------------------------------
+
+
+def _intent_server_start_cmd(
+    model_path_arg: Path | None,
+    port: int,
+    detach: bool,
+    idle_timeout: float,
+) -> int:
+    """Launch the sidecar (detached by default).  Returns CLI exit code."""
+    if PID_FILE.exists():
+        existing_pid = read_pid()
+        if existing_pid and is_pid_alive(existing_pid):
+            typer.echo(
+                f"intent-server already running (PID {existing_pid}, "
+                f"port {read_port()})."
+            )
+            return 0
+        # Stale PID file — clean it up.
+        for f in (PID_FILE, PORT_FILE):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+
+    resolved = model_path_arg or model_path()
+    if not resolved.exists():
+        typer.echo(
+            f"Error: model checkpoint not found at {resolved}.\n"
+            "Set PROMPT_SCANNER_INTENT_MODEL_PATH or pass --model-path.",
+            err=True,
+        )
+        return 1
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "agent_sec_cli.prompt_scanner.intent_server",
+        "--model-path",
+        str(resolved),
+        "--port",
+        str(port),
+        "--idle-timeout",
+        str(idle_timeout),
+    ]
+    if detach:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        log_fh = LOG_FILE.open("ab")
+        proc = subprocess.Popen(  # noqa: S603 (trusted args)
+            cmd,
+            stdout=log_fh,
+            stderr=log_fh,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
+            env=os.environ.copy(),
+        )
+        typer.echo(
+            f"intent-server starting (PID {proc.pid}); logs at {LOG_FILE}.\n"
+            "Run `agent-sec-cli scan-prompt intent-server status` once the "
+            "model finishes loading."
+        )
+        return 0
+    # Foreground — useful for debugging.
+    return subprocess.call(cmd, env=os.environ.copy())
+
+
+@intent_server_app.command("start")
+def intent_server_start(
+    model_path_arg: Path = typer.Option(
+        None,
+        "--model-path",
+        help="Override checkpoint directory.",
+    ),
+    port: int = typer.Option(
+        0,
+        "--port",
+        help="Bind port (default 0 = ephemeral).",
+    ),
+    detach: bool = typer.Option(
+        True,
+        "--detach/--foreground",
+        help="Run in the background (default) or attach to current shell.",
+    ),
+    idle_timeout: float = typer.Option(
+        1800.0,
+        "--idle-timeout",
+        help="Seconds of inactivity before the server self-terminates.",
+    ),
+) -> None:
+    """Start the multi-turn intent classifier sidecar."""
+    code = _intent_server_start_cmd(model_path_arg, port, detach, idle_timeout)
+    raise typer.Exit(code=code)
+
+
+@intent_server_app.command("stop")
+def intent_server_stop() -> None:
+    """Stop a running sidecar (sends SIGTERM and removes PID/port files)."""
+    pid = read_pid()
+    if pid is None or not is_pid_alive(pid):
+        typer.echo("intent-server is not running.")
+        for f in (PID_FILE, PORT_FILE):
+            try:
+                f.unlink()
+            except OSError:
+                pass
+        raise typer.Exit(code=0)
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    typer.echo(f"sent SIGTERM to PID {pid}.")
+    raise typer.Exit(code=0)
+
+
+@intent_server_app.command("status")
+def intent_server_status() -> None:
+    """Report whether the sidecar is alive and ready."""
+    pid = read_pid()
+    port = read_port()
+    if pid is None or not is_pid_alive(pid):
+        typer.echo("intent-server: not running")
+        raise typer.Exit(code=1)
+    if port is None:
+        typer.echo(f"intent-server: PID {pid} alive but port file missing")
+        raise typer.Exit(code=1)
+
+    try:
+        with urllib.request.urlopen(  # noqa: S310 (loopback)
+            f"http://127.0.0.1:{port}/health", timeout=2.0
+        ) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
+        typer.echo(f"intent-server: PID {pid} alive on port {port}, /health failed: {exc}")
+        raise typer.Exit(code=1)
+
+    typer.echo(
+        f"intent-server: PID {pid}, port {port}, "
+        f"status={payload.get('status')}, device={payload.get('device')}, "
+        f"model={payload.get('model_path')}"
+    )
+    raise typer.Exit(code=0)
+
+
 @scanner_app.callback(invoke_without_command=True)
 def scan_prompt(
     ctx: typer.Context,
     mode: str = typer.Option(
         "standard",
         "--mode",
-        help="Detection mode: fast (L1), standard (L1+L2), strict (L1+L2+L3)",
+        help="Detection mode: fast (L1), standard (L1+L2), strict (L1+L2+L3), intent_chain (L4)",
         case_sensitive=False,
     ),
     output_format: str = typer.Option(
@@ -131,7 +388,15 @@ def scan_prompt(
         scan_mode = ScanMode(mode.lower())
     except ValueError:
         typer.echo(
-            f"Error: Invalid mode '{mode}'. Choose from: fast, standard, strict",
+            f"Error: Invalid mode '{mode}'. "
+            "Choose from: fast, standard, strict, intent_chain",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if scan_mode is ScanMode.INTENT_CHAIN:
+        typer.echo(
+            "Error: intent_chain mode requires conversation context. "
+            "Use `agent-sec-cli scan-prompt conversation --stdin` instead.",
             err=True,
         )
         raise typer.Exit(code=1)
