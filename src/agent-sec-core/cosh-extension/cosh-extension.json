@@ -96,6 +96,17 @@
         "hooks": [
           {
             "type": "command",
+            "name": "multi-turn-intent",
+            "command": "python3 ${extensionPath}/hooks/multi_turn_intent_hook.py",
+            "description": "L4 multi-turn intent classifier (TurnGate Qwen3-4B).",
+            "timeout": 10000
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "name": "observability-hook",
             "command": "python3 ${extensionPath}/hooks/observability_hook.py",
             "description": "Records cosh hook observability metrics.",
