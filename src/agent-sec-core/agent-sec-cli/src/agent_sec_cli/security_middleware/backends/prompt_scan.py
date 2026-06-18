@@ -54,19 +54,17 @@ class PromptScanBackend(BaseBackend):
 
         try:
             scanner = PromptScanner(mode=scan_mode)
-            result = scanner.scan(text, source=source if source else None)
+            if history is not None or assistant_response is not None:
+                result = scanner.scan_conversation(
+                    history=history if isinstance(history, list) else [],
+                    current_query=text,
+                    assistant_response=assistant_response or "",
+                    source=source if source else None,
+                )
+            else:
+                result = scanner.scan(text, source=source if source else None)
         except Exception as exc:
             return _scanner_error_result(f"Scanner error: {exc}")
-        scanner = PromptScanner(mode=scan_mode)
-        if history is not None or assistant_response is not None:
-            result = scanner.scan_conversation(
-                history=history if isinstance(history, list) else [],
-                current_query=text,
-                assistant_response=assistant_response or "",
-                source=source if source else None,
-            )
-        else:
-            result = scanner.scan(text, source=source if source else None)
 
         has_error = result.verdict == Verdict.ERROR
         d = result.to_dict()

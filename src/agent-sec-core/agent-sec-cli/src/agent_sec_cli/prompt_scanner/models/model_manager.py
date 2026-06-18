@@ -1,8 +1,8 @@
 """Model manager – lazy loading, caching, and device selection.
 
 Models are downloaded separately via ``download_model`` (e.g. ``scan-prompt warmup``)
-and loaded on demand by ``load_model``.  Loading uses ``transformers``
-``AutoTokenizer`` / ``AutoModelForSequenceClassification`` from the local cache.
+and loaded on demand by ``load_model``.  Supports both sequence-classification
+models (L2 PromptGuard) and causal-LM models (L4 multi-intent TurnGate).
 
 ModelScope model IDs for Llama Prompt Guard 2:
     22M fast model : ``LLM-Research/Llama-Prompt-Guard-2-22M``
@@ -14,7 +14,7 @@ import logging
 import os
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 from agent_sec_cli.prompt_scanner.exceptions import ModelLoadError
 from agent_sec_cli.prompt_scanner.result import ThreatType
@@ -99,18 +99,19 @@ class ModelManager:
                 f"ModelScope download failed for '{model_name}': {exc}"
             ) from exc
 
-    def load_model(self, model_name: str) -> tuple[object, object]:
+    def load_model(
+        self, model_name: str, model_type: str = "classification"
+    ) -> tuple[object, object]:
         """Return a cached ``(model, tokenizer)`` pair, loading on demand.
 
         Thread-safe: concurrent calls for the same model will block on the
         lock and reuse the result of the first successful load.
 
-        The model **must** have been downloaded beforehand (e.g. via
-        ``scan-prompt warmup``).  If it is not present locally, a
-        ``ModelLoadError`` is raised with instructions to run warmup.
-
         Args:
-            model_name: ModelScope model identifier.
+            model_name: Model identifier (ModelScope ID or local relative path).
+            model_type: ``"classification"`` for SequenceClassification models
+                (e.g. PromptGuard), ``"causal_lm"`` for CausalLM generative
+                models (e.g. TurnGate multi-intent).
 
         Returns:
             ``(model, tokenizer)`` tuple ready for inference.
@@ -127,7 +128,7 @@ class ModelManager:
             # Double-check after acquiring the lock.
             if model_name in self._loaded_models:
                 return self._loaded_models[model_name]
-            pair = self._do_load(model_name)
+            pair = self._do_load(model_name, model_type)
             self._loaded_models[model_name] = pair
             return pair
 
@@ -189,23 +190,29 @@ class ModelManager:
             "  agent-sec-cli scan-prompt warmup"
         )
 
-    def _do_load(self, model_name: str) -> tuple[object, object]:
+    # ------------------------------------------------------------------
+
+    def _do_load(self, model_name: str, model_type: str) -> tuple[object, object]:
         """Load a model+tokenizer from the local cache (no download).
 
-        Raises ``ModelLoadError`` with a warmup hint if the model is not
-        present on disk.  All transformers output is suppressed unless
-        ``AGENT_SEC_DEBUG=1`` is set.
+        Args:
+            model_name: Relative path under cache dir.
+            model_type: ``"classification"`` or ``"causal_lm"``.
+
+        Raises:
+            ModelLoadError: if the model is not on disk or fails to load.
         """
         import torch
-        from transformers import (
-            AutoModelForSequenceClassification,
-            AutoTokenizer,
-        )
+        from transformers import AutoTokenizer
 
         local_model_path = self._resolve_local_model_path(model_name)
 
         log.info(
-            "Loading model from '%s' onto device '%s'.", local_model_path, self.device
+            "Loading model '%s' (type=%s) from '%s' onto device '%s'.",
+            model_name,
+            model_type,
+            local_model_path,
+            self.device,
         )
 
         tf_logger = logging.getLogger("transformers")
@@ -213,14 +220,12 @@ class ModelManager:
         try:
             if os.environ.get("AGENT_SEC_DEBUG") != "1":
                 tf_logger.setLevel(logging.ERROR)
-            # Suppress stdout/stderr to silence tqdm progress bars and any
-            # hardcoded print() calls from transformers internals.
             with open(os.devnull, "w") as _devnull, contextlib.redirect_stdout(
                 _devnull
             ), contextlib.redirect_stderr(_devnull):
                 tokenizer = AutoTokenizer.from_pretrained(local_model_path)
-                model = AutoModelForSequenceClassification.from_pretrained(
-                    local_model_path
+                model = self._load_model_by_type(
+                    local_model_path, model_type, torch
                 )
         except ModelLoadError:
             raise
@@ -235,3 +240,30 @@ class ModelManager:
         model.eval()
         log.info("Model '%s' loaded successfully.", model_name)
         return model, tokenizer
+
+    @staticmethod
+    def _load_model_by_type(
+        local_model_path: str, model_type: str, torch: Any
+    ) -> Any:
+        """Instantiate the correct Auto model class based on *model_type*."""
+        if model_type == "causal_lm":
+            from transformers import AutoModelForCausalLM
+
+            device = (
+                "cuda" if torch.cuda.is_available()
+                else "mps" if torch.backends.mps.is_available()
+                else "cpu"
+            )
+            dtype = torch.float32 if device == "cpu" else torch.float16
+            return AutoModelForCausalLM.from_pretrained(
+                local_model_path,
+                torch_dtype=dtype,
+                low_cpu_mem_usage=True,
+            )
+
+        # Default: classification
+        from transformers import AutoModelForSequenceClassification
+
+        return AutoModelForSequenceClassification.from_pretrained(
+            local_model_path
+        )

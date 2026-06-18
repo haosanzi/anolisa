@@ -6,6 +6,8 @@ Usage:
     python scripts/bench_intent_model.py --model-dir /path/to   # 自定义路径
     python scripts/bench_intent_model.py --rounds 20            # 推理轮次
     python scripts/bench_intent_model.py --device cpu            # 强制 CPU
+    python scripts/bench_intent_model.py --turngate-eval         # TurnGate 数据集评测
+    python scripts/bench_intent_model.py --turngate-eval --n-samples 30  # 指定样本数
 """
 
 from __future__ import annotations
@@ -99,6 +101,8 @@ def main() -> None:
     parser.add_argument("--rounds", type=int, default=10, help="每个样本推理的轮次 (default: 10)")
     parser.add_argument("--device", type=str, default=None, help="强制指定设备: cpu / cuda / mps")
     parser.add_argument("--warmup", type=int, default=2, help="预热轮次，不计入统计 (default: 2)")
+    parser.add_argument("--turngate-eval", action="store_true", help="使用 TurnGate 数据集评测准确率")
+    parser.add_argument("--n-samples", type=int, default=30, help="TurnGate 评测每类取样数 (default: 30)")
     args = parser.parse_args()
 
     model_dir = _get_model_dir(args.model_dir)
@@ -131,6 +135,11 @@ def main() -> None:
 
     print(f"  设备:       {device}  (dtype={dtype})")
     print("-" * 70)
+
+    # 如果是 TurnGate 评测模式，走专用路径
+    if args.turngate_eval:
+        _run_turngate_eval(args, model_dir, device, dtype)
+        return
 
     # 内存基线
     mem_before = 0
@@ -183,7 +192,7 @@ def main() -> None:
 
     # ── Step 2: 构造 prompt 模板 ──────────────────────────────────────
 
-    from agent_sec_cli.prompt_scanner.intent_server._format import format_defender_prompt
+    from agent_sec_cli.prompt_scanner.models.multi_intent import format_defender_prompt
 
     # ── Step 3: 推理基准测试 ──────────────────────────────────────────
 
@@ -263,6 +272,151 @@ def main() -> None:
     print(f"  设备:               {device} ({dtype})")
     print(f"  推理轮次:           {args.rounds} (预热 {args.warmup})")
     print("=" * 70)
+
+
+def _run_turngate_eval(args, model_dir: Path, device: str, dtype) -> None:
+    """使用 TurnGate 测试数据集评测模型准确率（通过 Ollama）。"""
+    import json  # noqa: F811
+
+    from agent_sec_cli.prompt_scanner.models.multi_intent import MultiIntentClassifier
+
+    dataset_dir = _CLI_ROOT / "data" / "turngate_test"
+    harmful_path = dataset_dir / "harmful_test.jsonl"
+    benign_path = dataset_dir / "benign_test.jsonl"
+
+    for p in (harmful_path, benign_path):
+        if not p.exists():
+            print(f"ERROR: 数据集不存在: {p}")
+            sys.exit(1)
+
+    print(f"\n{'='*70}")
+    print("  TurnGate 数据集评测 (Ollama)")
+    print(f"{'='*70}")
+    print(f"  数据集目录: {dataset_dir}")
+    print(f"  每类样本数: {args.n_samples}")
+
+    # 初始化 Ollama classifier
+    print("\n[1/3] 连接 Ollama...")
+    classifier = MultiIntentClassifier()
+    classifier.warmup()
+    print(f"      模型: {classifier.model_name}")
+
+    def _classify(history, query, response) -> tuple[str, float, float]:
+        result = classifier.classify(history, query, response)
+        return result["verdict"], result["p_harmful"], result["latency_ms"]
+
+    # 加载数据集
+    print("\n[2/3] 加载数据集...")
+    harmful_triples = _load_turngate_samples(harmful_path, args.n_samples)
+    benign_triples = _load_turngate_samples(benign_path, args.n_samples)
+    print(f"      harmful: {len(harmful_triples)} samples")
+    print(f"      benign:  {len(benign_triples)} samples")
+
+    # 推理
+    print(f"\n[3/3] 推理评测...")
+    print("-" * 70)
+
+    tp, fn = 0, 0
+    harmful_latencies: list[float] = []
+    for i, triple in enumerate(harmful_triples):
+        verdict, p_harm, lat = _classify(triple["history"], triple["query"], triple["response"])
+        harmful_latencies.append(lat)
+        mark = "\u2713" if verdict == "block" else "\u2717"
+        if verdict == "block":
+            tp += 1
+        else:
+            fn += 1
+        if i < 5 or verdict != "block":
+            print(f"  harmful[{i:>2}] {mark} p_harmful={p_harm:.3f} lat={lat:.0f}ms")
+
+    fp, tn = 0, 0
+    benign_latencies: list[float] = []
+    for i, triple in enumerate(benign_triples):
+        verdict, p_harm, lat = _classify(triple["history"], triple["query"], triple["response"])
+        benign_latencies.append(lat)
+        mark = "\u2713" if verdict == "pass" else "\u2717"
+        if verdict == "pass":
+            tn += 1
+        else:
+            fp += 1
+        if i < 5 or verdict != "pass":
+            print(f"  benign[{i:>2}] {mark} p_harmful={p_harm:.3f} lat={lat:.0f}ms")
+
+    # 汇总
+    n_harmful = len(harmful_triples)
+    n_benign = len(benign_triples)
+    tpr = tp / n_harmful if n_harmful else 0
+    fpr = fp / n_benign if n_benign else 0
+    precision = tp / (tp + fp) if (tp + fp) else 0
+    recall = tpr
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0
+
+    all_latencies = harmful_latencies + benign_latencies
+    avg_lat = statistics.mean(all_latencies)
+    med_lat = statistics.median(all_latencies)
+
+    print(f"\n{'='*70}")
+    print("  TurnGate 评测结果")
+    print(f"{'='*70}")
+    print(f"  Ollama 模型:       {classifier.model_name}")
+    print(f"  阈值:             binary (model outputs 0/1)")
+    print(f"  Harmful 样本:     {n_harmful} (TP={tp}, FN={fn})")
+    print(f"  Benign 样本:      {n_benign} (TN={tn}, FP={fp})")
+    print(f"  TPR (Recall):     {tpr:.1%}")
+    print(f"  FPR:              {fpr:.1%}")
+    print(f"  Precision:        {precision:.1%}")
+    print(f"  F1:               {f1:.3f}")
+    print(f"  延迟 (ms):        avg={avg_lat:.0f}  med={med_lat:.0f}  min={min(all_latencies):.0f}  max={max(all_latencies):.0f}")
+    print(f"{'='*70}")
+
+
+def _load_turngate_samples(path: Path, limit: int) -> list[dict]:
+    """Load TurnGate test samples and split into (history, query, response) triples."""
+    import json
+
+    triples: list[dict] = []
+    seen: set = set()
+    with path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            obj = json.loads(line)
+            idx = obj.get("sample_index")
+            if idx in seen:
+                continue
+            seen.add(idx)
+
+            conv = obj.get("conversation") or []
+            target_turn = obj.get("target_turn")
+
+            user_idx = None
+            if target_turn is not None:
+                for i, turn in enumerate(conv):
+                    if turn.get("turn_id") == target_turn and turn.get("role") == "user":
+                        user_idx = i
+                        break
+            if user_idx is None:
+                for i in range(len(conv) - 2, -1, -1):
+                    if conv[i].get("role") == "user" and conv[i + 1].get("role") == "assistant":
+                        user_idx = i
+                        break
+            if user_idx is None:
+                continue
+
+            history = [
+                {"role": t["role"], "content": t.get("content", "")}
+                for t in conv[:user_idx]
+            ]
+            query = conv[user_idx].get("content", "")
+            response = conv[user_idx + 1].get("content", "") if user_idx + 1 < len(conv) else ""
+            if not query or not response:
+                continue
+
+            triples.append({"history": history, "query": query, "response": response})
+            if len(triples) >= limit:
+                break
+    return triples
 
 
 if __name__ == "__main__":

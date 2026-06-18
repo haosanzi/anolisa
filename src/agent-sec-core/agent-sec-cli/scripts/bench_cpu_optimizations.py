@@ -27,7 +27,7 @@ from pathlib import Path
 _CLI_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_CLI_ROOT / "src"))
 
-from agent_sec_cli.prompt_scanner.intent_server._format import format_defender_prompt
+from agent_sec_cli.prompt_scanner.models.multi_intent import format_defender_prompt
 
 
 def _get_model_dir(cli_arg: str | None) -> Path:

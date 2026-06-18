@@ -1,12 +1,7 @@
 """CLI entry point for the prompt scanner (scan-prompt command)."""
 
 import json
-import os
-import signal
-import subprocess
 import sys
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -16,15 +11,6 @@ from agent_sec_cli.daemon.client import DaemonClient
 from agent_sec_cli.daemon.env import daemon_disabled
 from agent_sec_cli.daemon.protocol import DaemonResponse
 from agent_sec_cli.prompt_scanner.config import ScanMode
-from agent_sec_cli.prompt_scanner.intent_server.paths import (
-    LOG_FILE,
-    PID_FILE,
-    PORT_FILE,
-    is_pid_alive,
-    model_path,
-    read_pid,
-    read_port,
-)
 from agent_sec_cli.prompt_scanner.result import Verdict
 from agent_sec_cli.prompt_scanner.scanner import PromptScanner
 from agent_sec_cli.security_middleware import invoke
@@ -33,11 +19,6 @@ scanner_app = typer.Typer(
     name="scan-prompt", help="Prompt injection / jailbreak scanner"
 )
 DAEMON_REQUEST_TIMEOUT_MS = 30_000
-intent_server_app = typer.Typer(
-    name="intent-server",
-    help="Manage the long-running multi-turn intent classifier sidecar.",
-)
-scanner_app.add_typer(intent_server_app, name="intent-server")
 
 
 @scanner_app.command("warmup")
@@ -146,6 +127,38 @@ def scan_conversation_cmd(
         typer.echo("Error: current_query is empty.", err=True)
         raise typer.Exit(code=1)
 
+    # Prefer daemon path — model is pre-loaded and warm.
+    if _should_use_daemon():
+        try:
+            response = DaemonClient(timeout_ms=DAEMON_REQUEST_TIMEOUT_MS).call(
+                "scan-prompt",
+                params={
+                    "text": current_query,
+                    "mode": ScanMode.INTENT_CHAIN.value,
+                    "source": source,
+                    "history": history,
+                    "assistant_response": assistant_response,
+                },
+                trace_context=get_current_trace_context(),
+            )
+        except Exception as exc:
+            typer.echo(
+                json.dumps(
+                    _build_error_output(f"Daemon unavailable, falling back: {exc}"),
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            )
+            raise typer.Exit(code=0)
+
+        if output_format == "text":
+            exit_code = _print_daemon_response(response, output_format)
+            raise typer.Exit(code=exit_code)
+        else:
+            typer.echo(response.stdout)
+            raise typer.Exit(code=0)
+
+    # Fallback: local invoke (cold-loads model in-process).
     try:
         mw_result = invoke(
             "prompt_scan",
@@ -176,149 +189,8 @@ def scan_conversation_cmd(
 
 
 # ---------------------------------------------------------------------------
-# Sub-command group: intent-server (manage the long-running sidecar)
+# Sub-command: conversation (multi-turn intent scanning)
 # ---------------------------------------------------------------------------
-
-
-def _intent_server_start_cmd(
-    model_path_arg: Path | None,
-    port: int,
-    detach: bool,
-    idle_timeout: float,
-) -> int:
-    """Launch the sidecar (detached by default).  Returns CLI exit code."""
-    if PID_FILE.exists():
-        existing_pid = read_pid()
-        if existing_pid and is_pid_alive(existing_pid):
-            typer.echo(
-                f"intent-server already running (PID {existing_pid}, "
-                f"port {read_port()})."
-            )
-            return 0
-        # Stale PID file — clean it up.
-        for f in (PID_FILE, PORT_FILE):
-            try:
-                f.unlink()
-            except OSError:
-                pass
-
-    resolved = model_path_arg or model_path()
-    if not resolved.exists():
-        typer.echo(
-            f"Error: model checkpoint not found at {resolved}.\n"
-            "Set PROMPT_SCANNER_INTENT_MODEL_PATH or pass --model-path.",
-            err=True,
-        )
-        return 1
-
-    cmd = [
-        sys.executable,
-        "-m",
-        "agent_sec_cli.prompt_scanner.intent_server",
-        "--model-path",
-        str(resolved),
-        "--port",
-        str(port),
-        "--idle-timeout",
-        str(idle_timeout),
-    ]
-    if detach:
-        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        log_fh = LOG_FILE.open("ab")
-        proc = subprocess.Popen(  # noqa: S603 (trusted args)
-            cmd,
-            stdout=log_fh,
-            stderr=log_fh,
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
-            close_fds=True,
-            env=os.environ.copy(),
-        )
-        typer.echo(
-            f"intent-server starting (PID {proc.pid}); logs at {LOG_FILE}.\n"
-            "Run `agent-sec-cli scan-prompt intent-server status` once the "
-            "model finishes loading."
-        )
-        return 0
-    # Foreground — useful for debugging.
-    return subprocess.call(cmd, env=os.environ.copy())
-
-
-@intent_server_app.command("start")
-def intent_server_start(
-    model_path_arg: Path = typer.Option(
-        None,
-        "--model-path",
-        help="Override checkpoint directory.",
-    ),
-    port: int = typer.Option(
-        0,
-        "--port",
-        help="Bind port (default 0 = ephemeral).",
-    ),
-    detach: bool = typer.Option(
-        True,
-        "--detach/--foreground",
-        help="Run in the background (default) or attach to current shell.",
-    ),
-    idle_timeout: float = typer.Option(
-        1800.0,
-        "--idle-timeout",
-        help="Seconds of inactivity before the server self-terminates.",
-    ),
-) -> None:
-    """Start the multi-turn intent classifier sidecar."""
-    code = _intent_server_start_cmd(model_path_arg, port, detach, idle_timeout)
-    raise typer.Exit(code=code)
-
-
-@intent_server_app.command("stop")
-def intent_server_stop() -> None:
-    """Stop a running sidecar (sends SIGTERM and removes PID/port files)."""
-    pid = read_pid()
-    if pid is None or not is_pid_alive(pid):
-        typer.echo("intent-server is not running.")
-        for f in (PID_FILE, PORT_FILE):
-            try:
-                f.unlink()
-            except OSError:
-                pass
-        raise typer.Exit(code=0)
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
-    typer.echo(f"sent SIGTERM to PID {pid}.")
-    raise typer.Exit(code=0)
-
-
-@intent_server_app.command("status")
-def intent_server_status() -> None:
-    """Report whether the sidecar is alive and ready."""
-    pid = read_pid()
-    port = read_port()
-    if pid is None or not is_pid_alive(pid):
-        typer.echo("intent-server: not running")
-        raise typer.Exit(code=1)
-    if port is None:
-        typer.echo(f"intent-server: PID {pid} alive but port file missing")
-        raise typer.Exit(code=1)
-
-    try:
-        with urllib.request.urlopen(  # noqa: S310 (loopback)
-            f"http://127.0.0.1:{port}/health", timeout=2.0
-        ) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
-        typer.echo(f"intent-server: PID {pid} alive on port {port}, /health failed: {exc}")
-        raise typer.Exit(code=1)
-
-    typer.echo(
-        f"intent-server: PID {pid}, port {port}, "
-        f"status={payload.get('status')}, device={payload.get('device')}, "
-        f"model={payload.get('model_path')}"
-    )
-    raise typer.Exit(code=0)
 
 
 @scanner_app.callback(invoke_without_command=True)

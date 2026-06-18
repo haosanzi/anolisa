@@ -1,4 +1,8 @@
-"""Prompt scanner model preload background job."""
+"""Prompt scanner model preload background job.
+
+Preloads both the L2 ML classifier model and the L4 intent classifier model
+at daemon startup so all scan modes are ready without cold-start latency.
+"""
 
 import asyncio
 import contextlib
@@ -12,6 +16,7 @@ PROMPT_PRELOAD_ENV = "AGENT_SEC_DAEMON_PROMPT_PRELOAD"
 PROMPT_PRELOAD_DOWNLOAD_TIMEOUT_ENV = (
     "AGENT_SEC_DAEMON_PROMPT_PRELOAD_DOWNLOAD_TIMEOUT_SECONDS"
 )
+INTENT_PRELOAD_ENV = "AGENT_SEC_DAEMON_INTENT_PRELOAD"
 PROMPT_PRELOAD_JOB_NAME = "prompt-model-preload"
 PROMPT_PRELOAD_DOWNLOAD_TIMEOUT_SECONDS = 600.0
 PROMPT_PRELOAD_CHILD_TERMINATE_TIMEOUT_SECONDS = 5.0
@@ -19,7 +24,11 @@ _PROMPT_PRELOAD_CHILD_MODULE = "agent_sec_cli.daemon.jobs.prompt_preload"
 
 
 class PromptModelPreloadJob(BackgroundJob):
-    """One-shot startup job that downloads, loads, and probes the prompt model."""
+    """One-shot startup job that downloads, loads, and probes the prompt model.
+
+    Also preloads the L4 intent classifier model (Qwen3-4B) if available,
+    so multi-turn intent scanning is ready without a cold-start penalty.
+    """
 
     name = PROMPT_PRELOAD_JOB_NAME
 
@@ -114,6 +123,19 @@ class PromptModelPreloadJob(BackgroundJob):
             )
             return
 
+        # --- Intent model preload (best-effort, non-blocking) ---
+        if intent_preload_enabled():
+            try:
+                _update_prompt_state(self._prompt_state, intent_status="loading")
+                await asyncio.to_thread(_preload_intent_model_sync)
+                _update_prompt_state(self._prompt_state, intent_status="ready")
+            except Exception as exc:  # noqa: BLE001
+                _update_prompt_state(
+                    self._prompt_state,
+                    intent_status="degraded",
+                    intent_last_error=str(exc),
+                )
+
         finished_at = utc_now()
         self._last_error = None
         self._state = "completed"
@@ -129,6 +151,12 @@ class PromptModelPreloadJob(BackgroundJob):
 def prompt_preload_enabled() -> bool:
     """Return whether daemon startup should trigger prompt model preload."""
     raw_value = os.environ.get(PROMPT_PRELOAD_ENV, "1").strip().lower()
+    return raw_value not in {"0", "false", "no", "off"}
+
+
+def intent_preload_enabled() -> bool:
+    """Return whether daemon startup should trigger intent model preload."""
+    raw_value = os.environ.get(INTENT_PRELOAD_ENV, "1").strip().lower()
     return raw_value not in {"0", "false", "no", "off"}
 
 
@@ -242,6 +270,20 @@ def _preload_prompt_model_sync(
     scanner = PromptScanner(mode=scan_mode)
     _update_prompt_state(prompt_state, status="loading")
     scanner.scan(probe_text, source="daemon-startup")
+
+
+def _preload_intent_model_sync() -> None:
+    """Verify the Ollama-hosted L4 intent model is reachable.
+
+    The 4B model now runs in a system-level Ollama process. This preload step
+    just confirms connectivity and model availability — no local model loading.
+    """
+    from agent_sec_cli.prompt_scanner.models.multi_intent import (  # noqa: PLC0415
+        MultiIntentClassifier,
+    )
+
+    classifier = MultiIntentClassifier()
+    classifier.warmup()
 
 
 def _warmup_silently(scanner: Any) -> None:

@@ -26,6 +26,9 @@ class PromptScanRuntimeState:
     last_error: str | None = None
     last_started_at: str | None = None
     last_finished_at: str | None = None
+    # L4 intent classifier state
+    intent_status: str = "pending"
+    intent_last_error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable prompt scanner state."""
@@ -36,6 +39,8 @@ class PromptScanRuntimeState:
             "last_error": self.last_error,
             "last_started_at": self.last_started_at,
             "last_finished_at": self.last_finished_at,
+            "intent_status": self.intent_status,
+            "intent_last_error": self.intent_last_error,
         }
 
 

@@ -1,0 +1,13 @@
+# TurnGate safety classifier — fine-tuned Qwen3-4B for 0/1 classification
+# Converted from safetensors to GGUF (F16)
+FROM /Users/yanrong/.cache/prompt_scanner/models/TurnGate/Qwen3-4B/turngate-4b-f16.gguf
+
+# Template: raw completion mode (no thinking tokens)
+# The model is fine-tuned to output "0" (harmful) or "1" (benign) directly
+TEMPLATE """{{ .Prompt }}"""
+
+# Parameters optimized for classification (deterministic, short output)
+PARAMETER temperature 0
+PARAMETER num_predict 5
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|endoftext|>"

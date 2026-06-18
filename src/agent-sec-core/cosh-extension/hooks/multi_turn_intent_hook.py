@@ -32,7 +32,7 @@ from trace_context import with_trace_context
 _CLI_TIMEOUT_SECONDS = 10
 _DEFAULT_SOURCE = "cosh_after_model"
 
-# Same checkpoint convention as the sidecar / prompt_scanner module.
+# Same checkpoint convention as the prompt_scanner module.
 _MODEL_DIR = (
     Path.home()
     / ".cache"
@@ -193,8 +193,7 @@ def main() -> None:
             "[multi-turn-intent] ⚠️  多轮意图识别模型尚未就绪，本次响应未经 L4 检测。\n"
             f"请将训练好的 TurnGate Qwen3-4B 检查点放到：\n"
             f"  {_MODEL_DIR}\n"
-            "随后执行：\n"
-            "  agent-sec-cli scan-prompt intent-server start\n"
+            "随后重启 agent-sec daemon 即可自动加载模型。\n"
             "此提醒仅出现一次。"
         )
         print(json.dumps({"decision": "ask", "reason": warmup_msg}, ensure_ascii=False))

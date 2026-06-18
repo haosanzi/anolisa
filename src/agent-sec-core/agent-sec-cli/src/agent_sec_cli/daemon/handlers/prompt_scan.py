@@ -42,6 +42,8 @@ async def prompt_scan_handler(
         text=_string_param(params, "text"),
         mode=_string_param(params, "mode", default="standard"),
         source=_string_param(params, "source"),
+        history=params.get("history"),
+        assistant_response=params.get("assistant_response"),
     )
     return _action_result_to_handler_result(result)
 
@@ -52,18 +54,28 @@ def _invoke_prompt_scan(
     text: str,
     mode: str,
     source: str,
+    history: list[dict] | None = None,
+    assistant_response: str | None = None,
 ) -> Any:
     from agent_sec_cli.security_middleware import (  # noqa: PLC0415 - lazy import: daemon handler execution only
         invoke_with_context,
     )
 
+    kwargs: dict[str, Any] = {
+        "text": text,
+        "mode": mode,
+        "source": source,
+    }
+    if history is not None:
+        kwargs["history"] = history
+    if assistant_response is not None:
+        kwargs["assistant_response"] = assistant_response
+
     return invoke_with_context(
         "prompt_scan",
         caller="daemon",
         trace_context=trace_context,
-        text=text,
-        mode=mode,
-        source=source,
+        **kwargs,
     )
 
 
