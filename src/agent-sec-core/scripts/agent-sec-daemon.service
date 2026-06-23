@@ -1,0 +1,46 @@
+[Unit]
+Description=Agent Security Core Daemon
+After=network.target
+
+# Prevent rapid restart loops if model loading or runtime directory setup fails.
+StartLimitIntervalSec=86400
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/agent-sec-daemon serve
+ExecStop=/bin/kill -15 $MAINPID
+ExecReload=/bin/kill -1 $MAINPID
+TimeoutStopSec=30s
+Restart=on-failure
+RestartSec=5
+
+# The daemon runs as root so it can write to /var/log/agent-sec and access the
+# model cache downloaded by `agent-sec-cli scan-prompt warmup`.
+User=root
+Group=root
+
+# Runtime directory for the Unix socket (XDG_RUNTIME_DIR).
+RuntimeDirectory=agent-sec-core
+RuntimeDirectoryMode=0700
+Environment="XDG_RUNTIME_DIR=/run/agent-sec-core"
+Environment="HOME=/root"
+
+# Resource limits tuned for the default Llama-Prompt-Guard-2-86M BERT model.
+#
+# Cold-start memory footprint (first scan after daemon start):
+#   - model weights (FP16 safetensors): ~170-200 MB
+#   - tokenizer / vocab overhead:       ~50-100 MB
+#   - PyTorch runtime + activations:    ~150-300 MB
+#   - Python interpreter + dependencies: ~100-200 MB
+#   => peak RSS observed/expected:       ~500-800 MB
+#
+# We cap at 1G to leave headroom for batch inference and transient spikes while
+# still preventing a runaway process from consuming all memory.
+CPUQuota=100%
+MemoryMax=1G
+MemorySwapMax=0
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

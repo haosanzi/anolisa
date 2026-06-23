@@ -279,9 +279,10 @@ install-cli-site: ## RPM: Copy staged site-packages to private dir + wrapper
 	# Remove uv-generated bin/ and .lock from private site-packages
 	rm -rf $(DESTDIR)$(CLI_PRIVATE_SITE)/bin
 	rm -f  $(DESTDIR)$(CLI_PRIVATE_SITE)/.lock
-	# 2. Install wrapper script as /usr/bin/agent-sec-cli
+	# 2. Install wrapper script as /usr/bin/agent-sec-cli and /usr/bin/agent-sec-daemon
 	install -d -m 0755 $(DESTDIR)/usr/bin
 	install -p -m 0755 scripts/agent-sec-cli-wrapper.sh $(DESTDIR)/usr/bin/agent-sec-cli
+	install -p -m 0755 scripts/agent-sec-cli-wrapper.sh $(DESTDIR)/usr/bin/agent-sec-daemon
 
 .PHONY: install-cli-venv
 install-cli-venv: ## User: Create venv, install deps from uv.lock, install wheel, symlink

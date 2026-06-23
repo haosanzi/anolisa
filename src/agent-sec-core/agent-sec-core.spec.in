@@ -70,9 +70,20 @@ Recommends:     python3-pgpy >= 0.5
 Agent-sec-cli provides security scanning and hardening CLI commands.
 Built with maturin as a Rust native Python extension.
 
+%post -n agent-sec-cli
+%systemd_post agent-sec-daemon.service
+
+%preun -n agent-sec-cli
+%systemd_preun agent-sec-daemon.service
+
+%postun -n agent-sec-cli
+%systemd_postun agent-sec-daemon.service
+
 %files -n agent-sec-cli
 %defattr(0644,root,root,0755)
 %attr(0755,root,root) /usr/bin/agent-sec-cli
+%attr(0755,root,root) /usr/bin/agent-sec-daemon
+%{_unitdir}/agent-sec-daemon.service
 /opt/agent-sec/lib/python3.11/site-packages/*
 %dir %{_datadir}/anolisa
 %dir %{_datadir}/anolisa/adapters
@@ -186,6 +197,10 @@ make stage-cli
 export QA_RPATHS=$(( 0x0002 | 0x0010 ))
 rm -rf $RPM_BUILD_ROOT
 make install-all-for-rpmbuild DESTDIR=$RPM_BUILD_ROOT
+
+# Install systemd service for agent-sec-daemon
+install -d -m 0755 %{buildroot}%{_unitdir}
+install -p -m 0644 scripts/agent-sec-daemon.service %{buildroot}%{_unitdir}/agent-sec-daemon.service
 
 %changelog
 * Fri Jun 05 2026 YiZheng Yang <YiZheng.Yang@linux.alibaba.com> - 0.6.0-1
