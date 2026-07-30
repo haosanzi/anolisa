@@ -1,0 +1,114 @@
+# syntax=docker/dockerfile:1.7
+
+ARG PYTHON_IMAGE=python:3.11.6-slim-bookworm
+ARG RUST_IMAGE=rust:1.93.1-slim-bookworm
+
+FROM ${RUST_IMAGE} AS rust-toolchain
+
+FROM ${PYTHON_IMAGE} AS wheel-builder
+
+ARG MATURIN_VERSION=1.13.1
+ARG PIP_RETRIES=10
+ARG PIP_TIMEOUT_SECONDS=120
+ARG PYPI_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+
+ENV CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:${PATH} \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    RUSTUP_HOME=/usr/local/rustup
+
+COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
+COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
+
+RUN --mount=type=cache,id=agent-sec-maturin-pip,target=/root/.cache/pip \
+    apt-get update \
+    && apt-get install --yes --no-install-recommends build-essential ca-certificates \
+    && python -m pip install \
+        --timeout "${PIP_TIMEOUT_SECONDS}" \
+        --retries "${PIP_RETRIES}" \
+        --index-url "${PYPI_INDEX_URL}" \
+        "maturin==${MATURIN_VERSION}" \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build/agent-sec-cli
+
+COPY agent-sec-cli/Cargo.lock agent-sec-cli/Cargo.toml ./
+COPY agent-sec-cli/README.md agent-sec-cli/pyproject.toml ./
+COPY agent-sec-cli/src ./src
+
+RUN maturin build \
+    --release \
+    --locked \
+    --interpreter python3.11 \
+    --manylinux off \
+    --out /wheels
+
+FROM ${PYTHON_IMAGE} AS runtime
+
+ARG AGENT_SEC_GID=10001
+ARG AGENT_SEC_UID=10001
+ARG PIP_RETRIES=10
+ARG PIP_TIMEOUT_SECONDS=120
+ARG PYPI_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+
+ENV AGENT_SEC_DAEMON_SOCKET=/run/agent-sec/runtime/daemon.sock \
+    AGENT_SEC_DATA_DIR=/var/lib/agent-sec/events \
+    HOME=/home/agent-sec \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    XDG_CACHE_HOME=/home/agent-sec/.cache \
+    XDG_CONFIG_HOME=/var/lib/agent-sec/config \
+    XDG_DATA_HOME=/var/lib/agent-sec/data
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends ca-certificates libgomp1 tini \
+    && groupadd --gid "${AGENT_SEC_GID}" agent-sec \
+    && useradd \
+        --uid "${AGENT_SEC_UID}" \
+        --gid "${AGENT_SEC_GID}" \
+        --create-home \
+        --home-dir /home/agent-sec \
+        --shell /usr/sbin/nologin \
+        agent-sec \
+    && install -d -o "${AGENT_SEC_UID}" -g "${AGENT_SEC_GID}" -m 0700 \
+        /home/agent-sec/.cache \
+        /run/agent-sec \
+        /var/lib/agent-sec/config \
+        /var/lib/agent-sec/data \
+        /var/lib/agent-sec/events \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY agent-sec-cli/requirements.txt /requirements.txt
+RUN --mount=type=cache,id=agent-sec-runtime-pip,target=/home/agent-sec/.cache/pip \
+    python -m pip install \
+        --no-deps \
+        --require-hashes \
+        --timeout "${PIP_TIMEOUT_SECONDS}" \
+        --retries "${PIP_RETRIES}" \
+        --index-url "${PYPI_INDEX_URL}" \
+        --extra-index-url "${PYTORCH_INDEX_URL}" \
+        --requirement /requirements.txt \
+    && rm /requirements.txt
+
+COPY --from=wheel-builder /wheels /wheels
+RUN python -m pip install --no-cache-dir --no-deps /wheels/*.whl \
+    && agent-sec-cli --help >/dev/null \
+    && agent-sec-daemon --help >/dev/null \
+    && rm -rf /wheels
+
+ARG IMAGE_VERSION=0.8.0
+
+LABEL org.opencontainers.image.description="agent-sec-cli sidecar caller image" \
+      org.opencontainers.image.source="https://github.com/alibaba/anolisa" \
+      org.opencontainers.image.title="agent-sec-cli" \
+      org.opencontainers.image.version="${IMAGE_VERSION}"
+
+USER ${AGENT_SEC_UID}:${AGENT_SEC_GID}
+WORKDIR /home/agent-sec
+
+# This container is an interactive/example caller. It deliberately remains idle
+# so users can invoke agent-sec-cli with kubectl exec; it never starts the daemon.
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["python", "-c", "import signal; signal.pause()"]

@@ -1,0 +1,129 @@
+replicaCount: 1
+
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+cli:
+  image:
+    repository: anolis-registry.cn-zhangjiakou.cr.aliyuncs.com/anolis-docker-images/docker-temp
+    tag: "1.1-openclaw-alinux4-20260728"
+    pullPolicy: IfNotPresent
+  # Keep an interactive shell-based caller image running when it does not
+  # define its own long-lived foreground process.
+  stdin: true
+  tty: true
+  command: []
+  args: []
+  openclaw:
+    persistentPaths:
+      # Work around caller images that run as UID 10001 without a writable
+      # image HOME by placing OpenClaw state and workspace on the data PVC.
+      enabled: true
+      stateRelativePath: openclaw-state
+      workspaceRelativePath: openclaw-workspace
+  extraEnv: []
+  resources: {}
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+
+daemon:
+  image:
+    repository: jinli-acs-registry.cn-hangzhou.cr.aliyuncs.com/acs/agent-sec-daemon
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  command: []
+  args: []
+  promptPreload:
+    # Disabled by default so the first deployment does not require a model
+    # download. Fast-mode prompt scanning remains available.
+    enabled: true
+    downloadTimeoutSeconds: 600
+  extraEnv: []
+  resources: {}
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+  probes:
+    startup:
+      enabled: true
+      initialDelaySeconds: 1
+      periodSeconds: 2
+      timeoutSeconds: 2
+      failureThreshold: 30
+    readiness:
+      enabled: true
+      requireModel: false
+      initialDelaySeconds: 1
+      periodSeconds: 5
+      timeoutSeconds: 2
+      failureThreshold: 3
+    liveness:
+      enabled: true
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+
+runtime:
+  mountPath: /run/agent-sec
+  socketRelativePath: runtime/daemon.sock
+  volume:
+    # emptyDir is the correct default for a Pod-scoped Unix socket. Set this
+    # to persistentVolumeClaim only when a platform policy requires a PVC.
+    type: emptyDir
+    emptyDir:
+      medium: ""
+      sizeLimit: 16Mi
+    persistentVolumeClaim:
+      create: true
+      existingClaim: ""
+      storageClassName: ""
+      accessModes:
+        - ReadWriteOnce
+      size: 1Gi
+      annotations: {}
+
+persistence:
+  # Both containers use this directory as AGENT_SEC_DATA_DIR. The daemon log
+  # is written to <mountPath>/<dataRelativePath>/daemon.jsonl.
+  enabled: true
+  mountPath: /var/lib/agent-sec/persistent
+  dataRelativePath: events
+  persistentVolumeClaim:
+    # existingClaim takes precedence over create. Leave it empty to let the
+    # chart create a PVC, or set it to mount a pre-provisioned PVC.
+    create: true
+    existingClaim: ""
+    storageClassName: alicloud-disk-ssd
+    accessModes:
+      - ReadWriteOnce
+    size: 20Gi
+    annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+automountServiceAccountToken: false
+terminationGracePeriodSeconds: 30
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

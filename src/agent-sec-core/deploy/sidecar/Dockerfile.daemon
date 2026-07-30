@@ -1,0 +1,70 @@
+# syntax=docker/dockerfile:1.7
+
+ARG BASE_IMAGE=alibaba-cloud-linux-4-registry.cn-hangzhou.cr.aliyuncs.com/alinux4/alinux4:latest
+
+FROM ${BASE_IMAGE}
+
+ARG AGENT_SEC_GID=10001
+ARG AGENT_SEC_UID=10001
+ARG AGENT_SEC_VERSION=0.8.0
+ARG IMAGE_VERSION=0.8.0
+
+ENV AGENT_SEC_DAEMON_SOCKET=/run/agent-sec/runtime/daemon.sock \
+    AGENT_SEC_DATA_DIR=/var/lib/agent-sec/events \
+    HOME=/home/agent-sec \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/opt/agent-sec/lib/python3.11/site-packages \
+    PYTHONUNBUFFERED=1 \
+    XDG_CACHE_HOME=/home/agent-sec/.cache \
+    XDG_CONFIG_HOME=/var/lib/agent-sec/config \
+    XDG_DATA_HOME=/var/lib/agent-sec/data
+
+# alinux-agentic-os-repos must be installed in a separate dnf transaction:
+# the repository that provides anolisa is not visible to the transaction that
+# installs the repository package itself.  Use the public mirror for local
+# image builds, then let anolisa perform the version-pinned RPM installation.
+RUN sed -i -e "s/cloud.aliyuncs/aliyun/g" /etc/yum.repos.d/*.repo \
+    && dnf install --assumeyes alinux-agentic-os-repos \
+    && sed -i -e "s/cloud.aliyuncs/aliyun/g" /etc/yum.repos.d/*.repo \
+    && dnf install --assumeyes anolisa \
+    && sed -i \
+        -e "s/cloud.aliyuncs/aliyun/g" \
+        -e 's/default_backend = "raw"/default_backend = "rpm"/' \
+        /etc/anolisa/repo.toml \
+    && anolisa --install-mode system install agent-sec-core \
+        --backend rpm \
+        --version "${AGENT_SEC_VERSION}" \
+    && agent-sec-cli --help >/dev/null \
+    && agent-sec-daemon --help >/dev/null \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf/*
+
+RUN groupadd --gid "${AGENT_SEC_GID}" agent-sec \
+    && useradd \
+        --uid "${AGENT_SEC_UID}" \
+        --gid "${AGENT_SEC_GID}" \
+        --create-home \
+        --home-dir /home/agent-sec \
+        --shell /sbin/nologin \
+        agent-sec \
+    && install -d -o "${AGENT_SEC_UID}" -g "${AGENT_SEC_GID}" -m 0700 \
+        /home/agent-sec/.cache \
+        /run/agent-sec \
+        /var/lib/agent-sec/config \
+        /var/lib/agent-sec/data \
+        /var/lib/agent-sec/events
+
+COPY --chmod=0755 deploy/sidecar/healthcheck.py /usr/local/bin/agent-sec-daemon-health
+
+LABEL org.opencontainers.image.description="agent-sec-daemon sidecar image" \
+      org.opencontainers.image.source="https://github.com/alibaba/anolisa" \
+      org.opencontainers.image.title="agent-sec-daemon" \
+      org.opencontainers.image.version="${IMAGE_VERSION}"
+
+USER ${AGENT_SEC_UID}:${AGENT_SEC_GID}
+WORKDIR /home/agent-sec
+
+# The RPM wrapper execs Python, so agent-sec-daemon becomes PID 1 and receives
+# Kubernetes SIGTERM/SIGINT directly without a container-local init system.
+ENTRYPOINT ["/usr/bin/agent-sec-daemon"]
+CMD ["serve"]

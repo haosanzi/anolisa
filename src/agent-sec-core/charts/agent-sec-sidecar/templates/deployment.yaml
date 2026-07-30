@@ -1,0 +1,192 @@
+{{- include "agent-sec-sidecar.validateValues" . }}
+{{- $dataAccessConfig := include "agent-sec-sidecar.effectiveDataAccessModes" . | fromJson }}
+{{- $dataAccessModes := get $dataAccessConfig "accessModes" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-sec-sidecar.fullname" . }}
+  labels:
+    {{- include "agent-sec-sidecar.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    {{- if eq .Values.runtime.volume.type "persistentVolumeClaim" }}
+    type: Recreate
+    rollingUpdate: null
+    {{- else }}
+    type: RollingUpdate
+    rollingUpdate:
+      {{- if and .Values.persistence.enabled (not (has "ReadWriteMany" $dataAccessModes)) }}
+      maxSurge: 0
+      maxUnavailable: 1
+      {{- else }}
+      maxSurge: 1
+      maxUnavailable: 0
+      {{- end }}
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "agent-sec-sidecar.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agent-sec-sidecar.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: {{ .Values.automountServiceAccountToken }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: agent-sec-cli
+          image: "{{ .Values.cli.image.repository }}:{{ .Values.cli.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.cli.image.pullPolicy }}
+          stdin: {{ .Values.cli.stdin }}
+          tty: {{ .Values.cli.tty }}
+          {{- with .Values.cli.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.cli.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: AGENT_SEC_DAEMON_SOCKET
+              value: {{ include "agent-sec-sidecar.socketPath" . | quote }}
+            {{- if .Values.persistence.enabled }}
+            - name: AGENT_SEC_DATA_DIR
+              value: {{ include "agent-sec-sidecar.dataPath" . | quote }}
+            {{- if .Values.cli.openclaw.persistentPaths.enabled }}
+            - name: HOME
+              value: {{ .Values.persistence.mountPath | quote }}
+            - name: OPENCLAW_STATE_DIR
+              value: {{ include "agent-sec-sidecar.openclawStatePath" . | quote }}
+            - name: OPENCLAW_WORKSPACE_DIR
+              value: {{ include "agent-sec-sidecar.openclawWorkspacePath" . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.cli.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.cli.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.cli.resources | nindent 12 }}
+          volumeMounts:
+            - name: runtime
+              mountPath: {{ .Values.runtime.mountPath | quote }}
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath | quote }}
+            {{- end }}
+        - name: agent-sec-daemon
+          image: "{{ .Values.daemon.image.repository }}:{{ .Values.daemon.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.daemon.image.pullPolicy }}
+          {{- with .Values.daemon.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.daemon.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: AGENT_SEC_DAEMON_SOCKET
+              value: {{ include "agent-sec-sidecar.socketPath" . | quote }}
+            {{- if .Values.persistence.enabled }}
+            - name: AGENT_SEC_DATA_DIR
+              value: {{ include "agent-sec-sidecar.dataPath" . | quote }}
+            {{- end }}
+            - name: AGENT_SEC_DAEMON_PROMPT_PRELOAD
+              value: {{ ternary "1" "0" .Values.daemon.promptPreload.enabled | quote }}
+            - name: AGENT_SEC_DAEMON_PROMPT_PRELOAD_DOWNLOAD_TIMEOUT_SECONDS
+              value: {{ .Values.daemon.promptPreload.downloadTimeoutSeconds | quote }}
+            {{- with .Values.daemon.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.daemon.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.daemon.resources | nindent 12 }}
+          volumeMounts:
+            - name: runtime
+              mountPath: {{ .Values.runtime.mountPath | quote }}
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath | quote }}
+            {{- end }}
+          {{- if .Values.daemon.probes.startup.enabled }}
+          startupProbe:
+            exec:
+              command:
+                - /usr/local/bin/agent-sec-daemon-health
+            initialDelaySeconds: {{ .Values.daemon.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.daemon.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.daemon.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.daemon.probes.startup.failureThreshold }}
+          {{- end }}
+          {{- if .Values.daemon.probes.readiness.enabled }}
+          readinessProbe:
+            exec:
+              command:
+                - /usr/local/bin/agent-sec-daemon-health
+                {{- if .Values.daemon.probes.readiness.requireModel }}
+                - --require-model
+                {{- end }}
+            initialDelaySeconds: {{ .Values.daemon.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.daemon.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.daemon.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.daemon.probes.readiness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.daemon.probes.liveness.enabled }}
+          livenessProbe:
+            exec:
+              command:
+                - /usr/local/bin/agent-sec-daemon-health
+            initialDelaySeconds: {{ .Values.daemon.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.daemon.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.daemon.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.daemon.probes.liveness.failureThreshold }}
+          {{- end }}
+      volumes:
+        - name: runtime
+          {{- if eq .Values.runtime.volume.type "emptyDir" }}
+          emptyDir:
+            {{- with .Values.runtime.volume.emptyDir.medium }}
+            medium: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.runtime.volume.emptyDir.sizeLimit }}
+            sizeLimit: {{ . | quote }}
+            {{- end }}
+          {{- else }}
+          persistentVolumeClaim:
+            claimName: {{ include "agent-sec-sidecar.runtimeClaimName" . }}
+          {{- end }}
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "agent-sec-sidecar.dataClaimName" . }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

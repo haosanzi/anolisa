@@ -1,0 +1,25 @@
+agent-sec-cli and agent-sec-daemon are deployed in the same Pod.
+
+Wait for the Pod:
+  kubectl rollout status deployment/{{ include "agent-sec-sidecar.fullname" . }} \
+    --namespace {{ .Release.Namespace }}
+
+Run a fast prompt scan from the caller container:
+  kubectl exec --namespace {{ .Release.Namespace }} \
+    deployment/{{ include "agent-sec-sidecar.fullname" . }} \
+    --container agent-sec-cli -- \
+    agent-sec-cli scan-prompt --mode fast --text "hello"
+
+The shared daemon socket is:
+  {{ include "agent-sec-sidecar.socketPath" . }}
+
+{{ if .Values.persistence.enabled }}
+The shared persistent data directory is:
+  {{ include "agent-sec-sidecar.dataPath" . }}
+
+The data PVC is:
+  {{ include "agent-sec-sidecar.dataClaimName" . }}
+
+The daemon JSONL log is:
+  {{ include "agent-sec-sidecar.dataPath" . }}/daemon.jsonl
+{{ end }}

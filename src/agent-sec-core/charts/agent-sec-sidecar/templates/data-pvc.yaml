@@ -1,0 +1,45 @@
+{{- include "agent-sec-sidecar.validateValues" . }}
+{{- $pvc := .Values.persistence.persistentVolumeClaim -}}
+{{- $dataAccessConfig := include "agent-sec-sidecar.effectiveDataAccessModes" . | fromJson -}}
+{{- $dataAccessModes := get $dataAccessConfig "accessModes" -}}
+{{- $claimName := include "agent-sec-sidecar.dataClaimName" . -}}
+{{- $existing := dict -}}
+{{- if and .Values.persistence.enabled (not $pvc.existingClaim) $pvc.create -}}
+{{- $existing = lookup "v1" "PersistentVolumeClaim" .Release.Namespace $claimName -}}
+{{- end -}}
+{{- $ownedByRelease := false -}}
+{{- with $existing -}}
+{{- $annotations := .metadata.annotations | default dict -}}
+{{- $ownedByRelease = and
+      (eq (get $annotations "meta.helm.sh/release-name") $.Release.Name)
+      (eq (get $annotations "meta.helm.sh/release-namespace") $.Release.Namespace)
+-}}
+{{- end -}}
+{{- if and
+      .Values.persistence.enabled
+      (not $pvc.existingClaim)
+      $pvc.create
+      (or (not $existing) $ownedByRelease)
+}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $claimName }}
+  labels:
+    {{- include "agent-sec-sidecar.labels" . | nindent 4 }}
+  {{- with $pvc.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    {{- toYaml $dataAccessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ $pvc.size | quote }}
+  {{- if eq $pvc.storageClassName "-" }}
+  storageClassName: ""
+  {{- else if $pvc.storageClassName }}
+  storageClassName: {{ $pvc.storageClassName | quote }}
+  {{- end }}
+{{- end }}

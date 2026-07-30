@@ -1,0 +1,26 @@
+{{- include "agent-sec-sidecar.validateValues" . }}
+{{- $pvc := .Values.runtime.volume.persistentVolumeClaim -}}
+{{- if and (eq .Values.runtime.volume.type "persistentVolumeClaim") (not $pvc.existingClaim) $pvc.create }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "agent-sec-sidecar.runtimeClaimName" . }}
+  labels:
+    {{- include "agent-sec-sidecar.labels" . | nindent 4 }}
+  {{- with $pvc.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    {{- toYaml $pvc.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ $pvc.size | quote }}
+  {{- if eq $pvc.storageClassName "-" }}
+  storageClassName: ""
+  {{- else if $pvc.storageClassName }}
+  storageClassName: {{ $pvc.storageClassName | quote }}
+  {{- end }}
+{{- end }}
+
