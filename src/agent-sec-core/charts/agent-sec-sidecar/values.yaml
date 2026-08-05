@@ -40,8 +40,8 @@ daemon:
   command: []
   args: []
   promptPreload:
-    # Disabled by default so the first deployment does not require a model
-    # download. Fast-mode prompt scanning remains available.
+    # Enabled by default. Disable it when the first deployment must not depend
+    # on a runtime model download; fast-mode prompt scanning remains available.
     enabled: true
     downloadTimeoutSeconds: 600
   extraEnv: []
