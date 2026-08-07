@@ -14,20 +14,21 @@
 Chart 不创建 Service，也不开放网络端口。caller 只通过本 Pod 的 Unix domain socket
 访问 daemon。
 
-CLI container 默认设置 `stdin: false` 和 `tty: false`。仓库提供的 CLI 镜像通过
-entrypoint 完成幂等插件注册后，默认 `exec openclaw serve` 作为前台主进程，
-不再依赖交互式 shell 保活。
+CLI container 默认设置 `stdin: true` 和 `tty: true`，用于运行 Qoder CLI 的交互式
+TUI。仓库提供的 Qoder CLI 镜像通过 entrypoint 安装 agent-sec-core 插件后，默认
+`exec qodercli` 作为前台主进程。
 
-当持久化 PVC 启用时，Chart 默认将 CLI container 的 OpenClaw 路径设置为：
+当持久化 PVC 启用时，Chart 默认将 CLI container 的 Qoder 路径设置为：
 
 ```text
 HOME=/var/lib/agent-sec/persistent
-OPENCLAW_STATE_DIR=/var/lib/agent-sec/persistent/openclaw-state
-OPENCLAW_WORKSPACE_DIR=/var/lib/agent-sec/persistent/openclaw-workspace
+QODER_CONFIG_DIR=/var/lib/agent-sec/persistent/qoder-config
+QODER_WORKING_DIR=/var/lib/agent-sec/persistent/qoder-workspace
 ```
 
-这使以非 root UID `10001` 运行的 OpenClaw 能写入状态和 workspace，并让内容在
-Pod 重建后保留。可通过 `cli.openclaw.persistentPaths` 修改相对路径或关闭该行为；
+`QODER_CONFIG_DIR` 是 Qoder CLI 官方支持的配置目录覆盖变量，默认值为 `~/.qoder`；
+设置、会话、memory 等本地数据会随 PVC 保留。`QODER_WORKING_DIR` 指定持久化工作目录。
+可通过 `cli.qoder.persistentPaths` 修改相对路径或关闭该行为；
 `persistence.enabled=false` 时不会注入这些变量。
 
 ## 部署
@@ -40,7 +41,7 @@ helm upgrade --install agent-sec-sidecar \
   charts/agent-sec-sidecar \
   --namespace agent-sec \
   --create-namespace \
-  --set-string cli.image.repository=<REGISTRY>/agent-sec-cli \
+  --set-string cli.image.repository=<REGISTRY>/agent-sec-qodercli \
   --set-string cli.image.tag=0.8.0 \
   --set-string daemon.image.repository=<REGISTRY>/agent-sec-daemon \
   --set-string daemon.image.tag=0.8.0
@@ -196,7 +197,7 @@ kubectl exec \
 CLI 和 daemon 默认都使用数字 UID/GID `10001`。当前 daemon 创建的 runtime 目录为
 `0700`、socket 为 `0600`，因此两个 container 必须保持相同数字 UID。
 
-验证 OpenClaw 主进程和插件注册：
+验证 Qoder CLI 主进程和插件注册：
 
 ```bash
 kubectl logs \
@@ -209,5 +210,5 @@ kubectl exec \
   deployment/agent-sec-sidecar \
   --container agent-sec-cli \
   -- \
-  openclaw plugins inspect agent-sec --json
+  qodercli plugins list --json
 ```

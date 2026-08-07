@@ -56,20 +56,20 @@ Absolute socket path injected into both containers.
 {{- end }}
 
 {{/*
-Persistent OpenClaw state path injected into the CLI container.
+Persistent Qoder configuration path injected into the CLI container.
 */}}
-{{- define "agent-sec-sidecar.openclawStatePath" -}}
+{{- define "agent-sec-sidecar.qoderConfigPath" -}}
 {{- $mountPath := trimSuffix "/" .Values.persistence.mountPath -}}
-{{- $relativePath := trimPrefix "/" .Values.cli.openclaw.persistentPaths.stateRelativePath -}}
+{{- $relativePath := trimPrefix "/" .Values.cli.qoder.persistentPaths.configRelativePath -}}
 {{- printf "%s/%s" $mountPath $relativePath -}}
 {{- end }}
 
 {{/*
-Persistent OpenClaw workspace path injected into the CLI container.
+Persistent Qoder working directory injected into the CLI container.
 */}}
-{{- define "agent-sec-sidecar.openclawWorkspacePath" -}}
+{{- define "agent-sec-sidecar.qoderWorkspacePath" -}}
 {{- $mountPath := trimSuffix "/" .Values.persistence.mountPath -}}
-{{- $relativePath := trimPrefix "/" .Values.cli.openclaw.persistentPaths.workspaceRelativePath -}}
+{{- $relativePath := trimPrefix "/" .Values.cli.qoder.persistentPaths.workspaceRelativePath -}}
 {{- printf "%s/%s" $mountPath $relativePath -}}
 {{- end }}
 
@@ -129,7 +129,7 @@ Reject volume configurations that cannot preserve Pod-local UDS semantics.
 {{- $persistence := .Values.persistence | default dict -}}
 {{- $persistenceMountPath := get $persistence "mountPath" -}}
 {{- $dataRelativePath := get $persistence "dataRelativePath" -}}
-{{- $openclawPersistentPaths := .Values.cli.openclaw.persistentPaths -}}
+{{- $qoderPersistentPaths := .Values.cli.qoder.persistentPaths -}}
 {{- $dataAccessConfig := include "agent-sec-sidecar.effectiveDataAccessModes" . | fromJson -}}
 {{- $dataAccessModes := get $dataAccessConfig "accessModes" -}}
 {{- if not (has $volumeType (list "emptyDir" "persistentVolumeClaim")) -}}
@@ -159,16 +159,16 @@ Reject volume configurations that cannot preserve Pod-local UDS semantics.
 {{- if regexMatch "(^|/)\\.\\.(/|$)" $dataRelativePath -}}
 {{- fail "persistence.dataRelativePath must not contain a parent-directory segment" -}}
 {{- end -}}
-{{- if $openclawPersistentPaths.enabled -}}
-{{- range $name, $path := dict "stateRelativePath" $openclawPersistentPaths.stateRelativePath "workspaceRelativePath" $openclawPersistentPaths.workspaceRelativePath -}}
+{{- if $qoderPersistentPaths.enabled -}}
+{{- range $name, $path := dict "configRelativePath" $qoderPersistentPaths.configRelativePath "workspaceRelativePath" $qoderPersistentPaths.workspaceRelativePath -}}
 {{- if or (not (kindIs "string" $path)) (empty $path) -}}
-{{- fail (printf "cli.openclaw.persistentPaths.%s must be a non-empty string" $name) -}}
+{{- fail (printf "cli.qoder.persistentPaths.%s must be a non-empty string" $name) -}}
 {{- end -}}
 {{- if hasPrefix "/" $path -}}
-{{- fail (printf "cli.openclaw.persistentPaths.%s must be relative to persistence.mountPath" $name) -}}
+{{- fail (printf "cli.qoder.persistentPaths.%s must be relative to persistence.mountPath" $name) -}}
 {{- end -}}
 {{- if regexMatch "(^|/)\\.\\.(/|$)" $path -}}
-{{- fail (printf "cli.openclaw.persistentPaths.%s must not contain a parent-directory segment" $name) -}}
+{{- fail (printf "cli.qoder.persistentPaths.%s must not contain a parent-directory segment" $name) -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

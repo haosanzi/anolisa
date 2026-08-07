@@ -7,25 +7,22 @@ imagePullSecrets: []
 
 cli:
   image:
-    repository: jinli-acs-registry.cn-hangzhou.cr.aliyuncs.com/acs/agent-sec-cli
+    repository: jinli-acs-registry.cn-hangzhou.cr.aliyuncs.com/acs/agent-sec-qodercli
     tag: "0.8.0"
     pullPolicy: IfNotPresent
-  # The supported CLI image starts the OpenClaw gateway as its foreground
-  # process, so it does not rely on an interactive TTY for keepalive.
-  stdin: false
-  tty: false
+  # Qoder CLI is an interactive foreground TUI, so keep stdin and a TTY open.
+  stdin: true
+  tty: true
   command: []
   args: []
-  openclaw:
+  qoder:
     persistentPaths:
-      # Registration, configuration, credentials, sessions, and workspace data
-      # must survive Pod replacement, so place them on the data PVC.
+      # Qoder settings, sessions, memories, and workspace data must survive Pod
+      # replacement, so place them on the data PVC.
       enabled: true
-      stateRelativePath: openclaw-state
-      workspaceRelativePath: openclaw-workspace
-  extraEnv:
-    - name: OPENCLAW_GATEWAY_CMD
-      value: "openclaw gateway"
+      configRelativePath: qoder-config
+      workspaceRelativePath: qoder-workspace
+  extraEnv: []
   resources: {}
   securityContext:
     allowPrivilegeEscalation: false
