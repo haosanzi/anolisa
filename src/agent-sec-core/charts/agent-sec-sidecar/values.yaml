@@ -8,7 +8,7 @@ imagePullSecrets: []
 cli:
   image:
     repository: jinli-acs-registry.cn-hangzhou.cr.aliyuncs.com/acs/agent-sec-qodercli
-    tag: "0.8.0"
+    tag: "0.9.0"
     pullPolicy: IfNotPresent
   # Qoder CLI is an interactive foreground TUI, so keep stdin and a TTY open.
   stdin: true
@@ -22,7 +22,11 @@ cli:
       enabled: true
       configRelativePath: qoder-config
       workspaceRelativePath: qoder-workspace
-  extraEnv: []
+  extraEnv:
+    - name: CODE_SCANNER_MODE
+      value: "deny"
+    - name: PROMPT_SCANNER_MODE
+      value: "deny"
   resources: {}
   securityContext:
     allowPrivilegeEscalation: false

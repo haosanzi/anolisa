@@ -11,19 +11,15 @@ ARG QODERCLI_VERSION=latest
 
 ENV AGENT_SEC_DAEMON_SOCKET=/run/agent-sec/runtime/daemon.sock \
     AGENT_SEC_DATA_DIR=/var/lib/agent-sec/persistent/events \
-    HOME=/home/agent-sec \
     QODER_CONFIG_DIR=/home/agent-sec/.qoder \
     QODER_WORKING_DIR=/home/agent-sec/workspace \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Install the repository definition first so that agent-sec-core can be
-# installed directly as an RPM in the following dnf transaction.
+# Work around the anolisa raw backend dependency-installation bug on Alinux by
+# installing sec-core's declared RPM system dependencies before the raw bundle.
 RUN sed -i -e "s/cloud.aliyuncs/aliyun/g" /etc/yum.repos.d/*.repo \
-    && dnf install --assumeyes alinux-agentic-os-repos \
-    && sed -i -e "s/cloud.aliyuncs/aliyun/g" /etc/yum.repos.d/*.repo \
     && dnf install --assumeyes \
-        agent-sec-core \
         bash \
         bubblewrap \
         ca-certificates \
@@ -31,19 +27,25 @@ RUN sed -i -e "s/cloud.aliyuncs/aliyun/g" /etc/yum.repos.d/*.repo \
         git \
         gnupg2 \
         jq \
+        nodejs \
         npm \
         procps-ng \
         python3 \
         shadow-utils \
+        systemd \
         tar \
         unzip \
         which \
     && npm install --global "@qoder-ai/qodercli@${QODERCLI_VERSION}" \
     && node -e 'const major = Number(process.versions.node.split(".")[0]); process.exit(major >= 20 ? 0 : 1)' \
-    && python3 -c 'import sys; raise SystemExit(0 if (3, 11) <= sys.version_info < (3, 12) else 1)' \
+    && curl -fsSL https://get.agentic-os.sh | bash \
+    && export PATH="/root/.local/bin:${PATH}" \
+    && anolisa --install-mode system install sec-core --backend raw \
+    && install -m 0755 /root/.local/bin/anolisa /usr/local/bin/anolisa \
     && QODER_WORKING_DIR=/ qodercli --version \
+    && anolisa --version \
     && agent-sec-cli --help >/dev/null \
-    && test -x /opt/agent-sec/qoder-plugin/install.sh \
+    && test -f /usr/local/share/anolisa/adapters/sec-core/qoder/.qoder-plugin/plugin.json \
     && dnf clean all \
     && rm -rf /var/cache/dnf/* /root/.npm
 
@@ -61,6 +63,8 @@ RUN groupadd --gid "${AGENT_SEC_GID}" agent-sec \
         /home/agent-sec/workspace \
         /run/agent-sec/runtime \
         /var/lib/agent-sec/persistent/events
+
+ENV HOME=/home/agent-sec
 
 COPY --chmod=0755 entrypoint-qodercli.sh /usr/local/bin/entrypoint-qodercli.sh
 

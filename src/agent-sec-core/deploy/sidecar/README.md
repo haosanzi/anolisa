@@ -13,9 +13,12 @@ Kubernetes YAML 示例。
 | `Dockerfile.cli` | `openclaw serve` | 保留的 OpenClaw caller 镜像 |
 | `Dockerfile.daemon` | `agent-sec-daemon serve` | 只承担 daemon sidecar 进程职责 |
 
-Qoder CLI 镜像基于 Alibaba Cloud Linux 4，直接通过 DNF 安装 `agent-sec-core` RPM，
-并通过 npm 安装官方包 `@qoder-ai/qodercli`。RPM 将 Qoder 插件及安装脚本放在
-`/opt/agent-sec/qoder-plugin/`。镜像不启动 daemon。
+Qoder CLI 镜像基于 Alibaba Cloud Linux 4。镜像先通过 DNF 手动安装 sec-core 声明的
+RPM 系统依赖，以规避 anolisa raw backend 在 Alinux 上不会自动安装依赖的问题；随后
+安装 anolisa CLI，并执行
+`anolisa --install-mode system install sec-core --backend raw`。Qoder adapter 位于
+`/usr/local/share/anolisa/adapters/sec-core/qoder/`。镜像通过 npm 安装官方包
+`@qoder-ai/qodercli`，且不会启动 daemon。
 
 保留的 OpenClaw CLI 镜像基于 Ubuntu 24.04，安装 Node.js 24 和 OpenClaw，然后通过
 `anolisa --install-mode system install sec-core --backend raw` 安装 sec-core。它不从当前
@@ -73,9 +76,9 @@ docker push <REGISTRY>/agent-sec-daemon:0.8.0
 
 Qoder CLI 镜像构建阶段执行以下工作：
 
-1. 安装基础工具和满足 Qoder CLI 要求的 Node.js/npm；
-2. 直接安装 `agent-sec-core` RPM，再通过 npm 安装 Qoder CLI；
-3. 校验 `/opt/agent-sec/qoder-plugin/install.sh` 和所需 CLI；
+1. 手动安装 raw backend 未自动处理的系统依赖和满足 Qoder CLI 要求的 Node.js/npm；
+2. 安装 anolisa CLI，通过 raw backend 安装 sec-core，再通过 npm 安装 Qoder CLI；
+3. 校验 `/usr/local/share/anolisa/adapters/sec-core/qoder` 和所需 CLI；
 4. 创建 UID/GID `10001:10001` 并复制 `entrypoint-qodercli.sh`。
 
 daemon 镜像构建阶段安装 anolisa 和指定版本的 agent-sec-core RPM，检查两个 console
@@ -84,7 +87,7 @@ script，创建相同 UID/GID 与目录，并复制 daemon healthcheck 程序。
 Qoder CLI container 每次启动时，在 PVC 已挂载且环境变量已注入后，以运行 UID 执行：
 
 1. 创建 Qoder config、working directory 和 agent-sec data 目录；
-2. 直接执行 `/opt/agent-sec/qoder-plugin/install.sh --scope user`；
+2. 直接执行 `anolisa adapter enable sec-core qoder`；
 3. 不创建额外的注册 marker；
 4. 切换到 `QODER_WORKING_DIR` 并 `exec qodercli`，使其成为前台主进程。
 
