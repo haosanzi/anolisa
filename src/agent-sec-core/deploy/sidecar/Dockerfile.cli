@@ -1,114 +1,82 @@
-# syntax=docker/dockerfile:1.7
+# ---------------------------------------------------------------------
+# Dockerfile.sec-core
+# 用途：构建 agent-sec-core CLI / OpenClaw 镜像（对应文档 2.1 节 OpenClaw/CLI 镜像）
+# 约束：
+#   - agent-sec-cli、openclaw 位于 PATH
+#   - 包含 bash、jq 以及 /usr/local/share/anolisa/adapters/sec-core/openclaw 下插件文件
+#   - OpenClaw 版本 >= 2026.4.14
+#   - 以 UID/GID 10001:10001 运行
+#   - 不启动 agent-sec-daemon
+#   - 通过 entrypoint-openclaw.sh 提供前台主进程，并在运行时完成插件注册
+# ---------------------------------------------------------------------
+FROM ubuntu:24.04
 
-ARG PYTHON_IMAGE=python:3.11.6-slim-bookworm
-ARG RUST_IMAGE=rust:1.93.1-slim-bookworm
+# install base packages
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        bubblewrap \
+        gnupg \
+        ca-certificates \
+        wget \
+        curl \
+        git \
+        tar \
+        unzip \
+        openssh-server \
+        zip \
+        xz-utils \
+        python3 \
+        python3-pip \
+        man-db \
+        procps \
+        iproute2 \
+        net-tools \
+        iputils-ping \
+        dnsutils \
+        iotop \
+        iftop \
+        sysstat \
+        psmisc \
+        lsof \
+        strace \
+        make \
+        jq \
+        bash \
+        tree && \
+    rm -rf /var/lib/apt/lists/*
 
-FROM ${RUST_IMAGE} AS rust-toolchain
+# install Node.js for OpenClaw's current engine requirement
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
 
-FROM ${PYTHON_IMAGE} AS wheel-builder
+# install fixed OpenClaw version (document requires >= 2026.4.14)
+RUN npm install -g openclaw@^2026.4.14
 
-ARG MATURIN_VERSION=1.13.1
-ARG PIP_RETRIES=10
-ARG PIP_TIMEOUT_SECONDS=120
-ARG PYPI_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+# install sec-core through the anolisa CLI raw backend
+RUN apt-get update && \
+    curl -fsSL https://get.agentic-os.sh | bash && \
+    install -m 0755 /root/.local/bin/anolisa /usr/local/bin/anolisa && \
+    anolisa --install-mode system install sec-core --backend raw && \
+    rm -rf /var/lib/apt/lists/*
 
-ENV CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:${PATH} \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    RUSTUP_HOME=/usr/local/rustup
+# create non-root user/group 10001:10001 as required by the sidecar contract
+RUN groupadd -g 10001 agent-sec && \
+    useradd -u 10001 -g agent-sec -m -d /home/agent-sec -s /bin/bash agent-sec
 
-COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
-COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
+# ensure the runtime user can read the raw-installed plugin files
+RUN chown -R 10001:10001 /usr/local/share/anolisa/adapters/sec-core/openclaw && \
+    chmod -R u+rX /usr/local/share/anolisa/adapters/sec-core/openclaw
 
-RUN --mount=type=cache,id=agent-sec-maturin-pip,target=/root/.cache/pip \
-    apt-get update \
-    && apt-get install --yes --no-install-recommends build-essential ca-certificates \
-    && python -m pip install \
-        --timeout "${PIP_TIMEOUT_SECONDS}" \
-        --retries "${PIP_RETRIES}" \
-        --index-url "${PYPI_INDEX_URL}" \
-        "maturin==${MATURIN_VERSION}" \
-    && rm -rf /var/lib/apt/lists/*
+# default environment matching the documented recommendations
+ENV HOME=/var/lib/agent-sec/persistent \
+    OPENCLAW_STATE_DIR=/var/lib/agent-sec/persistent/openclaw-state \
+    OPENCLAW_WORKSPACE_DIR=/var/lib/agent-sec/persistent/openclaw-workspace \
+    AGENT_SEC_DAEMON_SOCKET=/run/agent-sec/runtime/daemon.sock \
+    AGENT_SEC_DATA_DIR=/var/lib/agent-sec/persistent/events
 
-WORKDIR /build/agent-sec-cli
+COPY entrypoint-openclaw.sh /usr/local/bin/entrypoint-openclaw.sh
+RUN chmod +x /usr/local/bin/entrypoint-openclaw.sh
 
-COPY agent-sec-cli/Cargo.lock agent-sec-cli/Cargo.toml ./
-COPY agent-sec-cli/README.md agent-sec-cli/pyproject.toml ./
-COPY agent-sec-cli/src ./src
-
-RUN maturin build \
-    --release \
-    --locked \
-    --interpreter python3.11 \
-    --manylinux off \
-    --out /wheels
-
-FROM ${PYTHON_IMAGE} AS runtime
-
-ARG AGENT_SEC_GID=10001
-ARG AGENT_SEC_UID=10001
-ARG PIP_RETRIES=10
-ARG PIP_TIMEOUT_SECONDS=120
-ARG PYPI_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
-ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
-
-ENV AGENT_SEC_DAEMON_SOCKET=/run/agent-sec/runtime/daemon.sock \
-    AGENT_SEC_DATA_DIR=/var/lib/agent-sec/events \
-    HOME=/home/agent-sec \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    XDG_CACHE_HOME=/home/agent-sec/.cache \
-    XDG_CONFIG_HOME=/var/lib/agent-sec/config \
-    XDG_DATA_HOME=/var/lib/agent-sec/data
-
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates libgomp1 tini \
-    && groupadd --gid "${AGENT_SEC_GID}" agent-sec \
-    && useradd \
-        --uid "${AGENT_SEC_UID}" \
-        --gid "${AGENT_SEC_GID}" \
-        --create-home \
-        --home-dir /home/agent-sec \
-        --shell /usr/sbin/nologin \
-        agent-sec \
-    && install -d -o "${AGENT_SEC_UID}" -g "${AGENT_SEC_GID}" -m 0700 \
-        /home/agent-sec/.cache \
-        /run/agent-sec \
-        /var/lib/agent-sec/config \
-        /var/lib/agent-sec/data \
-        /var/lib/agent-sec/events \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY agent-sec-cli/requirements.txt /requirements.txt
-RUN --mount=type=cache,id=agent-sec-runtime-pip,target=/home/agent-sec/.cache/pip \
-    python -m pip install \
-        --no-deps \
-        --require-hashes \
-        --timeout "${PIP_TIMEOUT_SECONDS}" \
-        --retries "${PIP_RETRIES}" \
-        --index-url "${PYPI_INDEX_URL}" \
-        --extra-index-url "${PYTORCH_INDEX_URL}" \
-        --requirement /requirements.txt \
-    && rm /requirements.txt
-
-COPY --from=wheel-builder /wheels /wheels
-RUN python -m pip install --no-cache-dir --no-deps /wheels/*.whl \
-    && agent-sec-cli --help >/dev/null \
-    && agent-sec-daemon --help >/dev/null \
-    && rm -rf /wheels
-
-ARG IMAGE_VERSION=0.8.0
-
-LABEL org.opencontainers.image.description="agent-sec-cli sidecar caller image" \
-      org.opencontainers.image.source="https://github.com/alibaba/anolisa" \
-      org.opencontainers.image.title="agent-sec-cli" \
-      org.opencontainers.image.version="${IMAGE_VERSION}"
-
-USER ${AGENT_SEC_UID}:${AGENT_SEC_GID}
-WORKDIR /home/agent-sec
-
-# This container is an interactive/example caller. It deliberately remains idle
-# so users can invoke agent-sec-cli with kubectl exec; it never starts the daemon.
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["python", "-c", "import signal; signal.pause()"]
+# the CLI image must not start agent-sec-daemon; entrypoint runs a foreground process
+ENTRYPOINT ["/usr/local/bin/entrypoint-openclaw.sh"]

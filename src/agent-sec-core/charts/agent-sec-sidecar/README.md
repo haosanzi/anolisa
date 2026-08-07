@@ -14,9 +14,9 @@
 Chart 不创建 Service，也不开放网络端口。caller 只通过本 Pod 的 Unix domain socket
 访问 daemon。
 
-CLI container 默认设置 `stdin: true` 和 `tty: true`，使以交互式 shell 为默认
-进程、且没有自定义长驻命令的 caller 镜像保持运行。如果镜像启动 OpenClaw 等前台
-服务，这两个字段不会替代或重启该服务。
+CLI container 默认设置 `stdin: false` 和 `tty: false`。仓库提供的 CLI 镜像通过
+entrypoint 完成幂等插件注册后，默认 `exec openclaw serve` 作为前台主进程，
+不再依赖交互式 shell 保活。
 
 当持久化 PVC 启用时，Chart 默认将 CLI container 的 OpenClaw 路径设置为：
 
@@ -195,3 +195,19 @@ kubectl exec \
 
 CLI 和 daemon 默认都使用数字 UID/GID `10001`。当前 daemon 创建的 runtime 目录为
 `0700`、socket 为 `0600`，因此两个 container 必须保持相同数字 UID。
+
+验证 OpenClaw 主进程和插件注册：
+
+```bash
+kubectl logs \
+  --namespace agent-sec \
+  deployment/agent-sec-sidecar \
+  --container agent-sec-cli
+
+kubectl exec \
+  --namespace agent-sec \
+  deployment/agent-sec-sidecar \
+  --container agent-sec-cli \
+  -- \
+  openclaw plugins inspect agent-sec --json
+```

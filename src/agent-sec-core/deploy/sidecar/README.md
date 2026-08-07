@@ -9,14 +9,14 @@ Kubernetes YAML 示例。
 
 | 文件 | 默认进程 | 用途 |
 | --- | --- | --- |
-| `Dockerfile.cli` | 空闲 Python 进程 | 安装 `agent-sec-cli`，供同 Pod 服务或 `kubectl exec` 调用；不启动 daemon |
+| `Dockerfile.cli` | `openclaw serve` | OpenClaw 主容器；运行时注册 sec-core 插件并通过 `agent-sec-cli` 调用同 Pod daemon |
 | `Dockerfile.daemon` | `agent-sec-daemon serve` | 只承担 daemon sidecar 进程职责 |
 
-CLI 镜像从当前仓库源码构建 wheel，并安装 `agent-sec-cli/requirements.txt` 中锁定的
-运行依赖。wheel builder 和 runtime 均使用 Python 3.11.6；Rust、maturin 和编译工具
-只存在于 builder stage。`requirements.txt` 已包含 `uv export` 生成的完整依赖闭包，
-因此容器使用 `pip --no-deps --require-hashes` 精确安装清单，不再让 pip 二次解析可漂移
-的传递依赖。
+CLI 镜像基于 Ubuntu 24.04，安装 Node.js 24 和 OpenClaw，然后通过
+`anolisa --install-mode system install sec-core --backend raw` 安装 sec-core。它不从当前
+checkout 编译 wheel。raw 安装同时提供 `agent-sec-cli`、`agent-sec-daemon` 和
+`/usr/local/share/anolisa/adapters/sec-core/openclaw`；CLI 镜像只负责启动 OpenClaw，
+不会启动其中的 daemon 可执行文件。
 
 daemon 镜像基于 Alibaba Cloud Linux 4，通过 `anolisa --install-mode system install`
 按 `AGENT_SEC_VERSION` 安装 agent-sec-core RPM，不在镜像构建中从本仓库源码编译。
@@ -25,13 +25,23 @@ RPM 同时提供 `agent-sec-cli` 和 `agent-sec-daemon` console script；这里�
 
 ## 构建
 
-必须从 `agent-sec-core` 仓库根目录执行：
+CLI Dockerfile 使用同目录的 `entrypoint-openclaw.sh` 作为构建输入，因此从
+`deploy/sidecar` 目录执行：
 
 ```bash
+cd deploy/sidecar
+
 docker build \
-  --file deploy/sidecar/Dockerfile.cli \
+  --file Dockerfile.cli \
   --tag <REGISTRY>/agent-sec-cli:0.8.0 \
   .
+```
+
+daemon Dockerfile 仍然从 `agent-sec-core` 仓库根目录构建，因为它复制
+`deploy/sidecar/healthcheck.py`：
+
+```bash
+cd ../..
 
 docker build \
   --file deploy/sidecar/Dockerfile.daemon \
@@ -39,22 +49,9 @@ docker build \
   .
 ```
 
-CLI 镜像默认使用与 `uv.lock` 一致的阿里云 PyPI mirror，并从 PyTorch CPU index
-安装 CPU 版 PyTorch。需要使用内部 mirror 时，可以覆盖构建参数：
-
-```bash
-docker build \
-  --build-arg PYPI_INDEX_URL=<PYPI_INDEX_URL> \
-  --build-arg PYTORCH_INDEX_URL=<PYTORCH_CPU_INDEX_URL> \
-  --build-arg PIP_TIMEOUT_SECONDS=120 \
-  --build-arg PIP_RETRIES=10 \
-  --file deploy/sidecar/Dockerfile.cli \
-  --tag <REGISTRY>/agent-sec-cli:0.8.0 \
-  .
-```
-
-`AGENT_SEC_UID` 和 `AGENT_SEC_GID` 默认都是 `10001`。如果构建时覆盖它们，必须同步
-修改部署清单中的 `runAsUser`、`runAsGroup` 和 `fsGroup`。
+CLI Dockerfile 使用 npm selector `openclaw@^2026.4.14`，构建时由 npm 解析该范围内的
+版本。镜像创建固定 UID/GID `10001:10001`；部署清单中的 `runAsUser`、`runAsGroup`
+和 `fsGroup` 必须与之保持一致。
 
 构建完成后推送到集群可访问的 registry：
 
@@ -67,17 +64,33 @@ docker push <REGISTRY>/agent-sec-daemon:0.8.0
 
 CLI 镜像构建阶段执行以下工作：
 
-1. 用 Rust 和 maturin 从本地 `agent-sec-cli` 源码生成 wheel；
-2. 在 runtime stage 安装锁定的 Python 依赖；
-3. 安装 wheel，并检查两个 console script 能正常解析；
-4. 创建 UID/GID `10001` 及其可写缓存、配置、数据和 runtime 目录。
+1. 安装 OpenClaw 所需的 Node.js 24 和基础运维工具；
+2. 安装 `anolisa`，再从 raw backend 安装 sec-core；
+3. 创建 UID/GID `10001:10001`；
+4. 复制 `entrypoint-openclaw.sh`，但不在镜像构建阶段注册插件。
 
 daemon 镜像构建阶段安装 anolisa 和指定版本的 agent-sec-core RPM，检查两个 console
 script，创建相同 UID/GID 与目录，并复制 daemon healthcheck 程序。
 
-容器每次启动时不再编译或安装软件：
+CLI container 每次启动时，在 PVC 已挂载且环境变量已注入后，以运行 UID 执行：
 
-- CLI 镜像通过 `tini` 启动一个空闲 Python 进程，以便容器持续运行，但不会启动 daemon；
+1. 创建 OpenClaw state、workspace 和 agent-sec data 目录；
+2. 首次启动或插件资源更新时，非交互初始化 workspace；
+3. 执行 `anolisa adapter enable sec-core openclaw` 注册插件；
+4. 写入当前 agent-sec 插件配置和持久化注册标记；
+5. 默认 `exec openclaw serve`，使其成为前台主进程。
+
+该流程不会启动 agent-sec daemon。可用环境变量覆盖运行行为：
+
+| 变量 | 默认值 | 作用 |
+| --- | --- | --- |
+| `OPENCLAW_GATEWAY_CMD` | `openclaw serve` | 注册完成后的前台命令 |
+| `ANOLISA_OPENCLAW_ALLOW_UNSAFE_PLUGIN_INSTALL` | `0` | 设置为 `1` 时向 `adapter enable` 传入显式 unsafe 授权 |
+
+向容器传入显式参数会跳过初始化并直接执行该命令，适合镜像检查或调试。
+
+daemon container 的启动行为不变：
+
 - daemon 镜像直接启动 `agent-sec-daemon serve`，使 daemon 成为 PID 1；
 - daemon 从 `AGENT_SEC_DAEMON_SOCKET` 读取 socket 路径；
 - daemon 健康探针通过同一个 UDS 调用 `daemon.health`。

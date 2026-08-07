@@ -7,23 +7,25 @@ imagePullSecrets: []
 
 cli:
   image:
-    repository: anolis-registry.cn-zhangjiakou.cr.aliyuncs.com/anolis-docker-images/docker-temp
-    tag: "1.1-openclaw-alinux4-20260728"
+    repository: jinli-acs-registry.cn-hangzhou.cr.aliyuncs.com/acs/agent-sec-cli
+    tag: "0.8.0"
     pullPolicy: IfNotPresent
-  # Keep an interactive shell-based caller image running when it does not
-  # define its own long-lived foreground process.
-  stdin: true
-  tty: true
+  # The supported CLI image starts the OpenClaw gateway as its foreground
+  # process, so it does not rely on an interactive TTY for keepalive.
+  stdin: false
+  tty: false
   command: []
   args: []
   openclaw:
     persistentPaths:
-      # Work around caller images that run as UID 10001 without a writable
-      # image HOME by placing OpenClaw state and workspace on the data PVC.
+      # Registration, configuration, credentials, sessions, and workspace data
+      # must survive Pod replacement, so place them on the data PVC.
       enabled: true
       stateRelativePath: openclaw-state
       workspaceRelativePath: openclaw-workspace
-  extraEnv: []
+  extraEnv:
+    - name: OPENCLAW_GATEWAY_CMD
+      value: "openclaw gateway"
   resources: {}
   securityContext:
     allowPrivilegeEscalation: false
