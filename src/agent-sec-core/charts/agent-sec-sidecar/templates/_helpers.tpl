@@ -74,12 +74,31 @@ Persistent Qoder working directory injected into the CLI container.
 {{- end }}
 
 {{/*
+Persistent Ollama home path.
+*/}}
+{{- define "agent-sec-sidecar.ollamaHomePath" -}}
+{{- $mountPath := trimSuffix "/" .Values.persistence.mountPath -}}
+{{- $relativePath := trimPrefix "/" .Values.ollama.persistentPaths.homeRelativePath -}}
+{{- printf "%s/%s" $mountPath $relativePath -}}
+{{- end }}
+
+{{/*
+Persistent Ollama model path.
+*/}}
+{{- define "agent-sec-sidecar.ollamaModelsPath" -}}
+{{- $mountPath := trimSuffix "/" .Values.persistence.mountPath -}}
+{{- $relativePath := trimPrefix "/" .Values.ollama.persistentPaths.modelsRelativePath -}}
+{{- printf "%s/%s" $mountPath $relativePath -}}
+{{- end }}
+
+{{/*
 Persistent agent-sec data path injected into both containers.
 */}}
 {{- define "agent-sec-sidecar.dataPath" -}}
 {{- $mountPath := trimSuffix "/" .Values.persistence.mountPath -}}
 {{- $relativePath := trimPrefix "/" .Values.persistence.dataRelativePath -}}
-{{- printf "%s/%s" $mountPath $relativePath -}}
+{{- $runAsUser := int .Values.podSecurityContext.runAsUser -}}
+{{- printf "%s/%s/%d" $mountPath $relativePath $runAsUser -}}
 {{- end }}
 
 {{/*
@@ -130,8 +149,20 @@ Reject volume configurations that cannot preserve Pod-local UDS semantics.
 {{- $persistenceMountPath := get $persistence "mountPath" -}}
 {{- $dataRelativePath := get $persistence "dataRelativePath" -}}
 {{- $qoderPersistentPaths := .Values.cli.qoder.persistentPaths -}}
+{{- $ollamaPersistentPaths := .Values.ollama.persistentPaths -}}
 {{- $dataAccessConfig := include "agent-sec-sidecar.effectiveDataAccessModes" . | fromJson -}}
 {{- $dataAccessModes := get $dataAccessConfig "accessModes" -}}
+{{- if .Values.persistence.enabled -}}
+{{- if not (hasKey .Values.podSecurityContext "runAsUser") -}}
+{{- fail "podSecurityContext.runAsUser is required to isolate persistent events by UID" -}}
+{{- end -}}
+{{- if lt (int .Values.podSecurityContext.runAsUser) 1 -}}
+{{- fail "podSecurityContext.runAsUser must be a positive numeric UID" -}}
+{{- end -}}
+{{- end -}}
+{{- if not (has .Values.ollama.kvCacheType (list "f16" "q8_0" "q4_0")) -}}
+{{- fail "ollama.kvCacheType must be one of: f16, q8_0, q4_0" -}}
+{{- end -}}
 {{- if not (has $volumeType (list "emptyDir" "persistentVolumeClaim")) -}}
 {{- fail "runtime.volume.type must be emptyDir or persistentVolumeClaim" -}}
 {{- end -}}
@@ -170,6 +201,17 @@ Reject volume configurations that cannot preserve Pod-local UDS semantics.
 {{- if regexMatch "(^|/)\\.\\.(/|$)" $path -}}
 {{- fail (printf "cli.qoder.persistentPaths.%s must not contain a parent-directory segment" $name) -}}
 {{- end -}}
+{{- end -}}
+{{- end -}}
+{{- range $name, $path := dict "homeRelativePath" $ollamaPersistentPaths.homeRelativePath "modelsRelativePath" $ollamaPersistentPaths.modelsRelativePath -}}
+{{- if or (not (kindIs "string" $path)) (empty $path) -}}
+{{- fail (printf "ollama.persistentPaths.%s must be a non-empty string" $name) -}}
+{{- end -}}
+{{- if hasPrefix "/" $path -}}
+{{- fail (printf "ollama.persistentPaths.%s must be relative to persistence.mountPath" $name) -}}
+{{- end -}}
+{{- if regexMatch "(^|/)\\.\\.(/|$)" $path -}}
+{{- fail (printf "ollama.persistentPaths.%s must not contain a parent-directory segment" $name) -}}
 {{- end -}}
 {{- end -}}
 {{- if eq $volumeType "persistentVolumeClaim" -}}

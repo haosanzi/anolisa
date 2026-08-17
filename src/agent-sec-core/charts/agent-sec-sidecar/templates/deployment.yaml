@@ -64,6 +64,12 @@ spec:
           env:
             - name: AGENT_SEC_DAEMON_SOCKET
               value: {{ include "agent-sec-sidecar.socketPath" . | quote }}
+            - name: AGENT_SEC_MODEL_SERVICE_BACKEND
+              value: {{ .Values.modelService.backend | quote }}
+            - name: AGENT_SEC_MODEL_SERVICE_BASE_URL
+              value: {{ .Values.modelService.baseUrl | quote }}
+            - name: AGENT_SEC_MODEL_SERVICE_TIMEOUT
+              value: {{ .Values.modelService.timeoutSeconds | quote }}
             {{- if .Values.persistence.enabled }}
             - name: AGENT_SEC_DATA_DIR
               value: {{ include "agent-sec-sidecar.dataPath" . | quote }}
@@ -107,11 +113,30 @@ spec:
             {{- if .Values.persistence.enabled }}
             - name: AGENT_SEC_DATA_DIR
               value: {{ include "agent-sec-sidecar.dataPath" . | quote }}
+            - name: HOME
+              value: {{ .Values.persistence.mountPath | quote }}
+            - name: XDG_CACHE_HOME
+              value: {{ printf "%s/cache" (trimSuffix "/" .Values.persistence.mountPath) | quote }}
+            - name: XDG_CONFIG_HOME
+              value: {{ printf "%s/config" (trimSuffix "/" .Values.persistence.mountPath) | quote }}
+            - name: XDG_DATA_HOME
+              value: {{ printf "%s/data" (trimSuffix "/" .Values.persistence.mountPath) | quote }}
+            {{- else }}
+            - name: HOME
+              value: /tmp/agent-sec-home
+            - name: XDG_CACHE_HOME
+              value: /tmp/agent-sec-cache
+            - name: XDG_CONFIG_HOME
+              value: /tmp/agent-sec-config
+            - name: XDG_DATA_HOME
+              value: /tmp/agent-sec-data
             {{- end }}
-            - name: AGENT_SEC_DAEMON_PROMPT_PRELOAD
-              value: {{ ternary "1" "0" .Values.daemon.promptPreload.enabled | quote }}
-            - name: AGENT_SEC_DAEMON_PROMPT_PRELOAD_DOWNLOAD_TIMEOUT_SECONDS
-              value: {{ .Values.daemon.promptPreload.downloadTimeoutSeconds | quote }}
+            - name: AGENT_SEC_MODEL_SERVICE_BACKEND
+              value: {{ .Values.modelService.backend | quote }}
+            - name: AGENT_SEC_MODEL_SERVICE_BASE_URL
+              value: {{ .Values.modelService.baseUrl | quote }}
+            - name: AGENT_SEC_MODEL_SERVICE_TIMEOUT
+              value: {{ .Values.modelService.timeoutSeconds | quote }}
             {{- with .Values.daemon.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -141,9 +166,6 @@ spec:
             exec:
               command:
                 - /usr/local/bin/agent-sec-daemon-health
-                {{- if .Values.daemon.probes.readiness.requireModel }}
-                - --require-model
-                {{- end }}
             initialDelaySeconds: {{ .Values.daemon.probes.readiness.initialDelaySeconds }}
             periodSeconds: {{ .Values.daemon.probes.readiness.periodSeconds }}
             timeoutSeconds: {{ .Values.daemon.probes.readiness.timeoutSeconds }}
@@ -159,6 +181,81 @@ spec:
             timeoutSeconds: {{ .Values.daemon.probes.liveness.timeoutSeconds }}
             failureThreshold: {{ .Values.daemon.probes.liveness.failureThreshold }}
           {{- end }}
+        {{- if .Values.ollama.enabled }}
+        - name: ollama
+          image: "{{ .Values.ollama.image.repository }}:{{ .Values.ollama.image.tag }}"
+          imagePullPolicy: {{ .Values.ollama.image.pullPolicy }}
+          env:
+            - name: OLLAMA_HOST
+              value: {{ .Values.ollama.host | quote }}
+            - name: OLLAMA_KEEP_ALIVE
+              value: {{ .Values.ollama.keepAlive | quote }}
+            - name: OLLAMA_FLASH_ATTENTION
+              value: {{ ternary "1" "0" .Values.ollama.flashAttention | quote }}
+            - name: OLLAMA_KV_CACHE_TYPE
+              value: {{ .Values.ollama.kvCacheType | quote }}
+            - name: OLLAMA_MODEL
+              value: {{ .Values.ollama.model | quote }}
+            - name: OLLAMA_STARTUP_TIMEOUT_SECONDS
+              value: {{ .Values.ollama.startupTimeoutSeconds | quote }}
+            {{- if .Values.persistence.enabled }}
+            - name: HOME
+              value: {{ include "agent-sec-sidecar.ollamaHomePath" . | quote }}
+            - name: OLLAMA_MODELS
+              value: {{ include "agent-sec-sidecar.ollamaModelsPath" . | quote }}
+            {{- else }}
+            - name: HOME
+              value: /tmp/ollama-home
+            - name: OLLAMA_MODELS
+              value: /tmp/ollama-models
+            {{- end }}
+            {{- with .Values.ollama.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.ollama.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.ollama.resources | nindent 12 }}
+          {{- if .Values.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath | quote }}
+          {{- end }}
+          {{- if .Values.ollama.probes.startup.enabled }}
+          startupProbe:
+            exec:
+              command:
+                - ollama
+                - list
+            initialDelaySeconds: {{ .Values.ollama.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.ollama.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.ollama.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.ollama.probes.startup.failureThreshold }}
+          {{- end }}
+          {{- if .Values.ollama.probes.readiness.enabled }}
+          readinessProbe:
+            exec:
+              command:
+                - ollama
+                - show
+                - {{ .Values.ollama.model | quote }}
+            initialDelaySeconds: {{ .Values.ollama.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.ollama.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.ollama.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.ollama.probes.readiness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.ollama.probes.liveness.enabled }}
+          livenessProbe:
+            exec:
+              command:
+                - ollama
+                - list
+            initialDelaySeconds: {{ .Values.ollama.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.ollama.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.ollama.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.ollama.probes.liveness.failureThreshold }}
+          {{- end }}
+        {{- end }}
       volumes:
         - name: runtime
           {{- if eq .Values.runtime.volume.type "emptyDir" }}

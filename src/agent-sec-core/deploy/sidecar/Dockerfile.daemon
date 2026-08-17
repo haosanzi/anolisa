@@ -6,38 +6,45 @@ FROM ${BASE_IMAGE}
 
 ARG AGENT_SEC_GID=10001
 ARG AGENT_SEC_UID=10001
-ARG AGENT_SEC_VERSION=0.8.0
-ARG IMAGE_VERSION=0.8.0
+ARG IMAGE_VERSION=0.10.1
+
+ENV ANOLISA_BIN=/root/.local/bin/anolisa \
+    RAW_REPO_DIR=/opt/anolisa-raw-repo
 
 ENV AGENT_SEC_DAEMON_SOCKET=/run/agent-sec/runtime/daemon.sock \
     AGENT_SEC_DATA_DIR=/var/lib/agent-sec/events \
-    HOME=/home/agent-sec \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/opt/agent-sec/lib/python3.11/site-packages \
     PYTHONUNBUFFERED=1 \
-    XDG_CACHE_HOME=/home/agent-sec/.cache \
     XDG_CONFIG_HOME=/var/lib/agent-sec/config \
     XDG_DATA_HOME=/var/lib/agent-sec/data
 
-# alinux-agentic-os-repos must be installed in a separate dnf transaction:
-# the repository that provides anolisa is not visible to the transaction that
-# installs the repository package itself.  Use the public mirror for local
-# image builds, then let anolisa perform the version-pinned RPM installation.
+# prepare-local-raw-repo.sh builds sec-core from the current checkout and
+# publishes it under the Anolisa raw repository layout expected by --repo.
+COPY deploy/sidecar/raw-repo/ ${RAW_REPO_DIR}/
+
+# The raw backend currently does not install RPM system dependencies on
+# Alinux. Install the dependencies declared by sec-core before installing the
+# current checkout from the image-local Anolisa repository.
 RUN sed -i -e "s/cloud.aliyuncs/aliyun/g" /etc/yum.repos.d/*.repo \
-    && dnf install --assumeyes alinux-agentic-os-repos \
-    && sed -i -e "s/cloud.aliyuncs/aliyun/g" /etc/yum.repos.d/*.repo \
-    && dnf install --assumeyes anolisa \
-    && sed -i \
-        -e "s/cloud.aliyuncs/aliyun/g" \
-        -e 's/default_backend = "raw"/default_backend = "rpm"/' \
-        /etc/anolisa/repo.toml \
-    && anolisa --install-mode system install agent-sec-core \
-        --backend rpm \
-        --version "${AGENT_SEC_VERSION}" \
+    && dnf install --assumeyes \
+        bubblewrap \
+        ca-certificates \
+        curl \
+        gnupg2 \
+        jq \
+        nodejs \
+        shadow-utils \
+        systemd \
+        tar \
+    && curl -fsSL https://get.agentic-os.sh | bash \
+    && "${ANOLISA_BIN}" --install-mode system \
+        install sec-core --backend raw --repo "file://${RAW_REPO_DIR}/v1" \
     && agent-sec-cli --help >/dev/null \
     && agent-sec-daemon --help >/dev/null \
     && dnf clean all \
     && rm -rf /var/cache/dnf/*
+
+ENV HOME=/home/agent-sec
 
 RUN groupadd --gid "${AGENT_SEC_GID}" agent-sec \
     && useradd \
@@ -48,7 +55,6 @@ RUN groupadd --gid "${AGENT_SEC_GID}" agent-sec \
         --shell /sbin/nologin \
         agent-sec \
     && install -d -o "${AGENT_SEC_UID}" -g "${AGENT_SEC_GID}" -m 0700 \
-        /home/agent-sec/.cache \
         /run/agent-sec \
         /var/lib/agent-sec/config \
         /var/lib/agent-sec/data \
@@ -62,9 +68,9 @@ LABEL org.opencontainers.image.description="agent-sec-daemon sidecar image" \
       org.opencontainers.image.version="${IMAGE_VERSION}"
 
 USER ${AGENT_SEC_UID}:${AGENT_SEC_GID}
-WORKDIR /home/agent-sec
+WORKDIR /tmp
 
-# The RPM wrapper execs Python, so agent-sec-daemon becomes PID 1 and receives
-# Kubernetes SIGTERM/SIGINT directly without a container-local init system.
-ENTRYPOINT ["/usr/bin/agent-sec-daemon"]
+# The raw wrapper execs its bundled Python runtime, so agent-sec-daemon becomes
+# PID 1 and receives Kubernetes SIGTERM/SIGINT directly.
+ENTRYPOINT ["/usr/local/bin/agent-sec-daemon"]
 CMD ["serve"]

@@ -6,8 +6,11 @@ FROM ${BASE_IMAGE}
 
 ARG AGENT_SEC_GID=10001
 ARG AGENT_SEC_UID=10001
-ARG IMAGE_VERSION=0.8.0
+ARG IMAGE_VERSION=0.10.1
 ARG QODERCLI_VERSION=latest
+
+ENV ANOLISA_BIN=/root/.local/bin/anolisa \
+    RAW_REPO_DIR=/opt/anolisa-raw-repo
 
 ENV AGENT_SEC_DAEMON_SOCKET=/run/agent-sec/runtime/daemon.sock \
     AGENT_SEC_DATA_DIR=/var/lib/agent-sec/persistent/events \
@@ -15,6 +18,8 @@ ENV AGENT_SEC_DAEMON_SOCKET=/run/agent-sec/runtime/daemon.sock \
     QODER_WORKING_DIR=/home/agent-sec/workspace \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
+
+COPY raw-repo/ ${RAW_REPO_DIR}/
 
 # Work around the anolisa raw backend dependency-installation bug on Alinux by
 # installing sec-core's declared RPM system dependencies before the raw bundle.
@@ -39,9 +44,9 @@ RUN sed -i -e "s/cloud.aliyuncs/aliyun/g" /etc/yum.repos.d/*.repo \
     && npm install --global "@qoder-ai/qodercli@${QODERCLI_VERSION}" \
     && node -e 'const major = Number(process.versions.node.split(".")[0]); process.exit(major >= 20 ? 0 : 1)' \
     && curl -fsSL https://get.agentic-os.sh | bash \
-    && export PATH="/root/.local/bin:${PATH}" \
-    && anolisa --install-mode system install sec-core --backend raw \
-    && install -m 0755 /root/.local/bin/anolisa /usr/local/bin/anolisa \
+    && "${ANOLISA_BIN}" --install-mode system \
+        install sec-core --backend raw --repo "file://${RAW_REPO_DIR}/v1" \
+    && install -m 0755 "${ANOLISA_BIN}" /usr/local/bin/anolisa \
     && QODER_WORKING_DIR=/ qodercli --version \
     && anolisa --version \
     && agent-sec-cli --help >/dev/null \
@@ -74,6 +79,6 @@ LABEL org.opencontainers.image.description="Qoder CLI caller image with agent-se
       org.opencontainers.image.version="${IMAGE_VERSION}"
 
 USER ${AGENT_SEC_UID}:${AGENT_SEC_GID}
-WORKDIR /home/agent-sec/workspace
+WORKDIR /tmp
 
 ENTRYPOINT ["/usr/local/bin/entrypoint-qodercli.sh"]

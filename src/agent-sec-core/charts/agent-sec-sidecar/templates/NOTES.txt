@@ -1,4 +1,4 @@
-agent-sec-cli and agent-sec-daemon are deployed in the same Pod.
+agent-sec-cli, agent-sec-daemon, and Ollama are deployed in the same Pod.
 
 Wait for the Pod:
   kubectl rollout status deployment/{{ include "agent-sec-sidecar.fullname" . }} \
@@ -12,6 +12,12 @@ Run a fast prompt scan from the caller container:
 
 The shared daemon socket is:
   {{ include "agent-sec-sidecar.socketPath" . }}
+
+The Ollama model service is available inside this Pod at:
+  {{ .Values.modelService.baseUrl }}
+
+The configured prompt-scan model is:
+  {{ .Values.ollama.model }}
 
 {{ if .Values.persistence.enabled }}
 The shared persistent data directory is:

@@ -169,6 +169,15 @@ def test_hooks_json_uses_qoder_plugin_wrapper() -> None:
     assert hook["name"] == "agent-sec-skill-ledger"
     assert hook["args"] == ["${QODER_PLUGIN_ROOT}/hooks/skill_ledger_hook.py"]
 
+    user_prompt = hooks["hooks"]["UserPromptSubmit"]
+    prompt_scanner = next(
+        hook
+        for group in user_prompt
+        for hook in group["hooks"]
+        if hook["name"] == "agent-sec-prompt-scan"
+    )
+    assert prompt_scanner["timeout"] == 150
+
 
 def test_env_flag_enabled_accepts_only_true_false(monkeypatch) -> None:
     monkeypatch.delenv("AGENT_SEC_TEST_FLAG", raising=False)

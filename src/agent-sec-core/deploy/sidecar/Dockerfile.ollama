@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1.7
+
+ARG BASE_IMAGE=alibaba-cloud-linux-4-registry.cn-hangzhou.cr.aliyuncs.com/alinux4/alinux4:4.0.4
+
+FROM ${BASE_IMAGE}
+
+ARG AGENT_SEC_GID=10001
+ARG AGENT_SEC_UID=10001
+ARG IMAGE_VERSION=0.32.1
+ARG OLLAMA_NEVRA=ollama-0.32.1-1.alnx4.x86_64
+
+ENV HOME=/home/agent-sec \
+    OLLAMA_HOST=127.0.0.1:11434 \
+    OLLAMA_KEEP_ALIVE=-1 \
+    OLLAMA_MODEL=modelscope.cn/ANOLISA/Qwen3Guard-Gen-0.6B-GGUF \
+    OLLAMA_MODELS=/home/agent-sec/.ollama/models
+
+# Koji build 70727 is published in the Alinux 4 Agentic OS repository as a
+# CPU-only Ollama RPM.
+RUN sed -i -e "s/cloud.aliyuncs/aliyun/g" /etc/yum.repos.d/*.repo \
+    && dnf install --assumeyes alinux-agentic-os-repos \
+    && sed -i -e "s/cloud.aliyuncs/aliyun/g" /etc/yum.repos.d/*.repo \
+    && dnf install --assumeyes "${OLLAMA_NEVRA}" \
+    && ollama --version \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf/*
+
+RUN groupadd --gid "${AGENT_SEC_GID}" agent-sec \
+    && useradd \
+        --uid "${AGENT_SEC_UID}" \
+        --gid "${AGENT_SEC_GID}" \
+        --create-home \
+        --home-dir /home/agent-sec \
+        --shell /sbin/nologin \
+        agent-sec \
+    && install -d -o "${AGENT_SEC_UID}" -g "${AGENT_SEC_GID}" -m 0700 \
+        /home/agent-sec/.ollama \
+        /home/agent-sec/.ollama/models
+
+COPY --chmod=0755 deploy/sidecar/entrypoint-ollama.sh /usr/local/bin/entrypoint-ollama.sh
+
+LABEL org.opencontainers.image.description="CPU-only Ollama sidecar for agent-sec prompt scanning" \
+      org.opencontainers.image.source="https://github.com/alibaba/anolisa" \
+      org.opencontainers.image.title="agent-sec-ollama" \
+      org.opencontainers.image.version="${IMAGE_VERSION}"
+
+USER ${AGENT_SEC_UID}:${AGENT_SEC_GID}
+WORKDIR /tmp
+
+EXPOSE 11434
+ENTRYPOINT ["/usr/local/bin/entrypoint-ollama.sh"]

@@ -5,10 +5,15 @@ fullnameOverride: ""
 
 imagePullSecrets: []
 
+modelService:
+  backend: ollama
+  baseUrl: http://localhost:11434
+  timeoutSeconds: 30
+
 cli:
   image:
     repository: jinli-acs-registry.cn-hangzhou.cr.aliyuncs.com/acs/agent-sec-qodercli
-    tag: "0.9.0"
+    tag: "0.10.2"
     pullPolicy: IfNotPresent
   # Qoder CLI is an interactive foreground TUI, so keep stdin and a TTY open.
   stdin: true
@@ -27,6 +32,8 @@ cli:
       value: "deny"
     - name: PROMPT_SCANNER_MODE
       value: "deny"
+    - name: PROMPT_SCANNER_TIMEOUT
+      value: "150"
   resources: {}
   securityContext:
     allowPrivilegeEscalation: false
@@ -38,15 +45,10 @@ cli:
 daemon:
   image:
     repository: jinli-acs-registry.cn-hangzhou.cr.aliyuncs.com/acs/agent-sec-daemon
-    tag: "latest"
+    tag: "0.10.1"
     pullPolicy: IfNotPresent
   command: []
   args: []
-  promptPreload:
-    # Enabled by default. Disable it when the first deployment must not depend
-    # on a runtime model download; fast-mode prompt scanning remains available.
-    enabled: true
-    downloadTimeoutSeconds: 600
   extraEnv: []
   resources: {}
   securityContext:
@@ -64,10 +66,54 @@ daemon:
       failureThreshold: 30
     readiness:
       enabled: true
-      requireModel: false
       initialDelaySeconds: 1
       periodSeconds: 5
       timeoutSeconds: 2
+      failureThreshold: 3
+    liveness:
+      enabled: true
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+
+ollama:
+  enabled: true
+  image:
+    repository: jinli-acs-registry.cn-hangzhou.cr.aliyuncs.com/acs/agent-sec-ollama
+    tag: "0.32.1"
+    pullPolicy: IfNotPresent
+  model: modelscope.cn/ANOLISA/Qwen3Guard-Gen-0.6B-GGUF
+  host: 127.0.0.1:11434
+  keepAlive: "-1"
+  # Quantized KV cache keeps the model's 32K context within the default
+  # 2-vCPU/4-GiB ACS Pod. Ollama requires Flash Attention for KV quantization.
+  flashAttention: true
+  kvCacheType: q4_0
+  startupTimeoutSeconds: 60
+  persistentPaths:
+    homeRelativePath: ollama-home
+    modelsRelativePath: ollama-models
+  extraEnv: []
+  resources: {}
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+  probes:
+    startup:
+      enabled: true
+      initialDelaySeconds: 1
+      periodSeconds: 2
+      timeoutSeconds: 2
+      failureThreshold: 30
+    readiness:
+      enabled: true
+      initialDelaySeconds: 1
+      periodSeconds: 5
+      timeoutSeconds: 5
       failureThreshold: 3
     liveness:
       enabled: true
@@ -96,8 +142,9 @@ runtime:
       annotations: {}
 
 persistence:
-  # Both containers use this directory as AGENT_SEC_DATA_DIR. The daemon log
-  # is written to <mountPath>/<dataRelativePath>/daemon.jsonl.
+  # CLI and daemon use <mountPath>/<dataRelativePath>/<runAsUser> as
+  # AGENT_SEC_DATA_DIR. The UID level keeps data created by different runtime
+  # users isolated during UID migration.
   enabled: true
   mountPath: /var/lib/agent-sec/persistent
   dataRelativePath: events
@@ -117,9 +164,9 @@ podLabels: {}
 
 podSecurityContext:
   runAsNonRoot: true
-  runAsUser: 10001
-  runAsGroup: 10001
-  fsGroup: 10001
+  runAsUser: 20001
+  runAsGroup: 20001
+  fsGroup: 20001
   fsGroupChangePolicy: OnRootMismatch
   seccompProfile:
     type: RuntimeDefault

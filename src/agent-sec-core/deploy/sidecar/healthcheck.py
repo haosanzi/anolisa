@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env agent-sec-python
 """Container health probe for agent-sec-daemon."""
 
 import argparse

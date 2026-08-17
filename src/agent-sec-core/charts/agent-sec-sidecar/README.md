@@ -4,15 +4,19 @@
 
 - `agent-sec-cli` caller container；
 - `agent-sec-daemon` sidecar container；
-- 同时挂载到 `/run/agent-sec` 的 Pod runtime volume；
-- 同时挂载到 `/var/lib/agent-sec/persistent` 的持久化数据 PVC；
-- 同时注入的
+- `ollama` 模型服务 sidecar container；
+- CLI 与 daemon 同时挂载到 `/run/agent-sec` 的 Pod runtime volume；
+- 三个 container 同时挂载到 `/var/lib/agent-sec/persistent` 的持久化数据 PVC；
+- CLI 与 daemon 同时注入
   `AGENT_SEC_DAEMON_SOCKET=/run/agent-sec/runtime/daemon.sock`；
-- 同时注入的
-  `AGENT_SEC_DATA_DIR=/var/lib/agent-sec/persistent/events`。
+- CLI 与 daemon 同时注入
+  `AGENT_SEC_DATA_DIR=/var/lib/agent-sec/persistent/events/<runAsUser>`；默认
+  `runAsUser=20001`，因此默认路径是
+  `/var/lib/agent-sec/persistent/events/20001`。
 
-Chart 不创建 Service，也不开放网络端口。caller 只通过本 Pod 的 Unix domain socket
-访问 daemon。
+Chart 不创建 Service，也不开放网络端口。caller 通过本 Pod 的 Unix domain socket
+访问 daemon；Rust prompt scanner 通过 Pod 共享 loopback 的
+`http://localhost:11434` 访问 Ollama。
 
 CLI container 默认设置 `stdin: true` 和 `tty: true`，用于运行 Qoder CLI 的交互式
 TUI。仓库提供的 Qoder CLI 镜像通过 entrypoint 安装 agent-sec-core 插件后，默认
@@ -33,7 +37,8 @@ QODER_WORKING_DIR=/var/lib/agent-sec/persistent/qoder-workspace
 
 ## 部署
 
-先按 [`deploy/sidecar/README.md`](../../deploy/sidecar/README.md) 构建并推送两个镜像。
+先按 [`deploy/sidecar/README.md`](../../deploy/sidecar/README.md) 构建并推送三个镜像；
+若使用不会自动创建 repository 的 registry，需要预先创建这三个镜像仓库。
 本地 kubeconfig 指向目标集群后执行：
 
 ```bash
@@ -42,9 +47,11 @@ helm upgrade --install agent-sec-sidecar \
   --namespace agent-sec \
   --create-namespace \
   --set-string cli.image.repository=<REGISTRY>/agent-sec-qodercli \
-  --set-string cli.image.tag=0.8.0 \
+  --set-string cli.image.tag=0.10.2 \
   --set-string daemon.image.repository=<REGISTRY>/agent-sec-daemon \
-  --set-string daemon.image.tag=0.8.0
+  --set-string daemon.image.tag=0.10.1 \
+  --set-string ollama.image.repository=<REGISTRY>/agent-sec-ollama \
+  --set-string ollama.image.tag=0.32.1
 ```
 
 私有 registry 的认证信息通过标准 `imagePullSecrets` 配置：
@@ -54,7 +61,7 @@ imagePullSecrets:
   - name: registry-credentials
 ```
 
-从 Chart `0.1.0` 升级到 `0.2.0` 时，应使用
+从 Chart `0.2.x` 升级到 `0.3.0` 时，应使用
 `--reset-then-reuse-values`。它先载入新 Chart 的默认值，再合并旧 release
 的自定义值。不要在这次升级中使用 `--reuse-values`，否则新增的
 `persistence.*` 默认字段可能缺失。
@@ -62,12 +69,17 @@ imagePullSecrets:
 ## 持久化数据和 daemon 日志
 
 Chart 默认使用 ACS 的 `alicloud-disk-ssd` StorageClass，创建一个 `20Gi`、
-`ReadWriteOnce` 的数据 PVC，并挂载到 CLI 和 daemon 两个 container。daemon
+`ReadWriteOnce` 的数据 PVC，并挂载到 CLI、daemon 和 Ollama 三个 container。daemon
 的结构化日志写入：
 
 ```text
-/var/lib/agent-sec/persistent/events/daemon.jsonl
+/var/lib/agent-sec/persistent/events/20001/daemon.jsonl
 ```
+
+`events` 下的数字 UID 子目录来自 `podSecurityContext.runAsUser`。修改运行时 UID 后，
+Chart 会使用新的子目录，不会要求新 UID 修改旧 UID 所有的目录权限。例如从 10001
+迁移到 20001 后，新数据写入 `events/20001`，原有 `events/10001` 保留不动。该行为
+隔离数据而不迁移历史；若新 UID 仍需读取旧数据，部署方必须另行复制或迁移。
 
 默认 PVC 名称由 release 名稳定生成，例如 release 为 `agent-sec` 时是
 `agent-sec-agent-sec-sidecar-data`：
@@ -110,7 +122,7 @@ persistence:
   enabled: false
 ```
 
-CLI 和 daemon 使用相同数字 UID/GID，并复用应用原有的本地文件读写逻辑；Chart
+三个 container 使用相同数字 UID/GID，并复用应用原有的本地文件读写逻辑；Chart
 不额外引入容器间同步组件。
 
 ## Runtime volume
@@ -161,21 +173,33 @@ PVC 模式只允许 `replicaCount=1`。Unix socket 不是跨 Pod 服务协议，
 把多个 Pod 连接到同一个 daemon。PVC 的底层文件系统也必须支持创建 Unix socket；
 若无平台强制要求，应继续使用 `emptyDir`。
 
-## 模型预加载和 readiness
+## Ollama 模型服务和 readiness
 
-Chart 默认设置 `daemon.promptPreload.enabled=true`。daemon readiness 默认只检查
-`daemon.health`，不等待模型 ready。
+Chart 默认启动 `ollama` sidecar，并设置：
 
-如果需要让 readiness 等待模型 ready：
-
-```yaml
-daemon:
-  probes:
-    readiness:
-      requireModel: true
+```text
+OLLAMA_HOST=127.0.0.1:11434
+OLLAMA_MODEL=modelscope.cn/ANOLISA/Qwen3Guard-Gen-0.6B-GGUF
+OLLAMA_FLASH_ATTENTION=1
+OLLAMA_KV_CACHE_TYPE=q4_0
+AGENT_SEC_MODEL_SERVICE_BASE_URL=http://localhost:11434
 ```
 
-如果首次部署不希望下载模型，可以设置 `daemon.promptPreload.enabled=false`。
+`AGENT_SEC_MODEL_SERVICE_BACKEND`、`AGENT_SEC_MODEL_SERVICE_BASE_URL` 和
+`AGENT_SEC_MODEL_SERVICE_TIMEOUT` 同时注入 CLI 与 daemon。当前 Qoder prompt hook
+直接执行 CLI 中的 Rust scanner，因此 CLI 必须能访问该地址。
+
+Ollama startup/liveness probe 检查 server，readiness probe 通过 `ollama show` 确认
+目标模型已经存在。模型默认保存在数据 PVC 的
+`/var/lib/agent-sec/persistent/ollama-models`，Pod 替换后无需重新下载。
+
+模型内置 32768-token context。Chart 默认启用 Flash Attention，并将 K/V cache
+量化为 `q4_0`，以降低长 context 的内存占用。若更重视 KV cache 精度，可将
+`ollama.kvCacheType` 改为 `q8_0`（约为 `f16` 一半内存）或 `f16`，同时相应提高
+Pod 的内存规格。
+
+如果部署方提供 Pod 外部模型服务，可以设置 `ollama.enabled=false`，并覆盖顶层
+`modelService.baseUrl`。
 
 ## 验证
 
@@ -194,8 +218,9 @@ kubectl exec \
   agent-sec-cli scan-prompt --mode fast --text "hello"
 ```
 
-CLI 和 daemon 默认都使用数字 UID/GID `10001`。当前 daemon 创建的 runtime 目录为
-`0700`、socket 为 `0600`，因此两个 container 必须保持相同数字 UID。
+Chart 默认将三个 container 运行成数字 UID/GID `20001:20001`。镜像内保留
+`10001:10001` 作为非 Kubernetes 场景的默认用户；Pod SecurityContext 会覆盖镜像
+USER。UDS 权限仍要求 CLI 与 daemon 使用相同数字 UID，PVC 写权限由 `fsGroup` 提供。
 
 验证 Qoder CLI 主进程和插件注册：
 

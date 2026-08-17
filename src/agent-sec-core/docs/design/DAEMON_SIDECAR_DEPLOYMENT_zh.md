@@ -450,6 +450,11 @@ socket volume 只用于进程间通信，不应同时承担所有持久数据存
 Security Events 和 Observability 数据路径由 `AGENT_SEC_DATA_DIR` 控制。容器部署必须显式设置
 该变量，避免依赖 `/var/log`、容器 home 或 `/tmp` fallback。
 
+使用持久化 volume 且允许调整运行时 UID 时，推荐把最终路径设置为
+`<持久化挂载点>/events/<runAsUser>`。UID 子目录隔离不同运行时用户创建的数据，避免新
+UID 对旧 UID 所有的目录执行 owner-only 操作。切换 UID 后，旧目录不会自动迁移；需要
+连续读取历史数据时，部署方必须显式复制或迁移。
+
 如果事件由 caller container 写入，而查询由 daemon 执行，则 caller 与 daemon 必须挂载
 同一个 Pod 本地数据目录，并使用兼容 UID。SQLite database、WAL 和 SHM 文件必须位于同一
 volume。

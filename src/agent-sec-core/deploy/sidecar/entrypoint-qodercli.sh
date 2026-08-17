@@ -10,12 +10,6 @@ set -euo pipefail
 export HOME QODER_CONFIG_DIR QODER_WORKING_DIR
 export AGENT_SEC_DAEMON_SOCKET AGENT_SEC_DATA_DIR
 
-current_uid="$(id -u)"
-current_gid="$(id -g)"
-if [[ "$current_uid" != "10001" || "$current_gid" != "10001" ]]; then
-    echo "[entrypoint] WARNING: expected UID/GID 10001:10001, got ${current_uid}:${current_gid}." >&2
-fi
-
 for command_name in anolisa qodercli agent-sec-cli; do
     if ! command -v "$command_name" >/dev/null 2>&1; then
         echo "[entrypoint] ERROR: required command '$command_name' not found in PATH." >&2
