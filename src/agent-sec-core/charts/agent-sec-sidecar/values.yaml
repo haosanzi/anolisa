@@ -159,7 +159,8 @@ persistence:
     size: 20Gi
     annotations: {}
 
-podAnnotations: {}
+podAnnotations:
+  alibabacloud.com/pod-required-spec: "4-8Gi"
 podLabels: {}
 
 podSecurityContext:
