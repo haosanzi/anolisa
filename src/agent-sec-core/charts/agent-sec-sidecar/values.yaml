@@ -86,10 +86,23 @@ ollama:
   model: modelscope.cn/ANOLISA/Qwen3Guard-Gen-0.6B-GGUF
   host: 127.0.0.1:11434
   keepAlive: "-1"
-  # Quantized KV cache keeps the model's 32K context within the default
-  # 2-vCPU/4-GiB ACS Pod. Ollama requires Flash Attention for KV quantization.
+  # The Ollama sidecar caps the model context at num_ctx=4096 (see
+  # entrypoint-ollama.sh) and quantises the KV cache to q8_0 to keep the
+  # container memory footprint down.  Flash Attention is required by Ollama
+  # for a quantised cache and therefore stays enabled.  Measured on a 4-vCPU
+  # ACS Pod with:
+  #   kubectl top pod -n agent-sec \
+  #     "$(kubectl get po -n agent-sec -l app.kubernetes.io/instance=agent-sec \
+  #       -o jsonpath='{.items[0].metadata.name}')" --containers
+  # the ollama container sits at ~836Mi with q8_0 versus ~1500Mi with f16.
+  # Do not size this from the `llama_kv_cache: size = ...` line in the server
+  # log: that covers the KV cache alone (238Mi at q8_0), not the model
+  # weights and compute buffers the container also pays for.  This trades
+  # latency for memory: a 1.9k-token scan took 24s with q8_0 versus 7.4s
+  # with f16, because llama.cpp falls back to an unoptimised quantised
+  # attention kernel whose per-token cost grows with context length.
   flashAttention: true
-  kvCacheType: q4_0
+  kvCacheType: q8_0
   startupTimeoutSeconds: 60
   persistentPaths:
     homeRelativePath: ollama-home

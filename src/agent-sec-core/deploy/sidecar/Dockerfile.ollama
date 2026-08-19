@@ -12,6 +12,9 @@ ARG OLLAMA_NEVRA=ollama-0.32.1-1.alnx4.x86_64
 ENV HOME=/home/agent-sec \
     OLLAMA_HOST=127.0.0.1:11434 \
     OLLAMA_KEEP_ALIVE=-1 \
+    OLLAMA_KV_CACHE_TYPE=q8_0 \
+    OLLAMA_NUM_PARALLEL=1 \
+    OLLAMA_NUM_CTX=4096 \
     OLLAMA_MODEL=modelscope.cn/ANOLISA/Qwen3Guard-Gen-0.6B-GGUF \
     OLLAMA_MODELS=/home/agent-sec/.ollama/models
 

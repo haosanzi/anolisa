@@ -181,7 +181,7 @@ Chart 默认启动 `ollama` sidecar，并设置：
 OLLAMA_HOST=127.0.0.1:11434
 OLLAMA_MODEL=modelscope.cn/ANOLISA/Qwen3Guard-Gen-0.6B-GGUF
 OLLAMA_FLASH_ATTENTION=1
-OLLAMA_KV_CACHE_TYPE=q4_0
+OLLAMA_KV_CACHE_TYPE=q8_0
 AGENT_SEC_MODEL_SERVICE_BASE_URL=http://localhost:11434
 ```
 
@@ -193,10 +193,27 @@ Ollama startup/liveness probe 检查 server，readiness probe 通过 `ollama sho
 目标模型已经存在。模型默认保存在数据 PVC 的
 `/var/lib/agent-sec/persistent/ollama-models`，Pod 替换后无需重新下载。
 
-模型内置 32768-token context。Chart 默认启用 Flash Attention，并将 K/V cache
-量化为 `q4_0`，以降低长 context 的内存占用。若更重视 KV cache 精度，可将
-`ollama.kvCacheType` 改为 `q8_0`（约为 `f16` 一半内存）或 `f16`，同时相应提高
-Pod 的内存规格。
+模型内置 32768-token context，但 Ollama sidecar 在启动时会把 `num_ctx` 覆盖为
+4096（见 `entrypoint-ollama.sh`），以降低 KV cache 内存占用。Chart 默认启用
+Flash Attention，并把 K/V cache 量化为 `q8_0`，进一步压低容器内存占用（Ollama
+要求量化 KV cache 必须同时启用 Flash Attention）。
+
+内存实测方式：
+
+```bash
+kubectl top pod -n agent-sec \
+  "$(kubectl get po -n agent-sec -l app.kubernetes.io/instance=agent-sec \
+    -o jsonpath='{.items[0].metadata.name}')" --containers
+```
+
+在 4-vCPU ACS Pod 上，`ollama` 容器 `q8_0` 约 836Mi，`f16` 约 1500Mi。注意不要用
+ollama 日志里的 `llama_kv_cache: size = ...` 去估算容器内存：那一行只含 KV cache
+本身（q8_0 下 238Mi），不含模型权重和 compute buffer。
+
+代价是延迟：在纯 CPU runner 上，`q8_0` 会走 llama.cpp 未优化的量化 attention
+内核，单 token 成本随上下文长度显著上升——实测 1.9k-token 扫描在 `q8_0` 下需要
+24s，`f16` 下仅需 7.4s。若更看重延迟且内存充裕，可把 `ollama.kvCacheType` 改为
+`f16`；若内存极度吃紧也可用 `q4_0`。
 
 如果部署方提供 Pod 外部模型服务，可以设置 `ollama.enabled=false`，并覆盖顶层
 `modelService.baseUrl`。
