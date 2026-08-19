@@ -54,6 +54,19 @@ docker build \
   .
 ```
 
+### 前置条件：Ollama RPM
+
+`Dockerfile.ollama` 目前从本地 RPM 安装 Ollama，因为 `ollama-0.32.1-2` 尚未发布到
+Agentic OS 仓库。构建前必须先把该 RPM 放到 `deploy/` 下：
+
+```
+src/agent-sec-core/deploy/ollama-0.32.1-2.alnx4.x86_64.rpm
+```
+
+`.gitignore` 忽略 `*.rpm`，所以全新 clone 不包含这个文件；缺失时 `docker build`
+会在 bind mount 一步直接失败。待该版本发布到 Agentic OS 仓库后，应改回用
+`dnf install ollama-<nevra>` 从仓库安装，并删除这一前置条件。
+
 daemon 和 Ollama Dockerfile 从仓库根目录构建：
 
 ```bash

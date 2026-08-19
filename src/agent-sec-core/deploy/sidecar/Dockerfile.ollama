@@ -7,7 +7,6 @@ FROM ${BASE_IMAGE}
 ARG AGENT_SEC_GID=10001
 ARG AGENT_SEC_UID=10001
 ARG IMAGE_VERSION=0.32.1
-ARG OLLAMA_NEVRA=ollama-0.32.1-1.alnx4.x86_64
 
 ENV HOME=/home/agent-sec \
     OLLAMA_HOST=127.0.0.1:11434 \
@@ -18,12 +17,15 @@ ENV HOME=/home/agent-sec \
     OLLAMA_MODEL=modelscope.cn/ANOLISA/Qwen3Guard-Gen-0.6B-GGUF \
     OLLAMA_MODELS=/home/agent-sec/.ollama/models
 
-# Koji build 70727 is published in the Alinux 4 Agentic OS repository as a
-# CPU-only Ollama RPM.
-RUN sed -i -e "s/cloud.aliyuncs/aliyun/g" /etc/yum.repos.d/*.repo \
+# CPU-only Ollama installed from a locally built RPM (deploy/ollama-*.rpm).
+# The Agentic OS repo stays enabled so dnf can resolve runtime dependencies
+# (openblas, systemd, dbus, ...). The RPM is bind-mounted for this step only,
+# so it does not leave a lingering image layer.
+RUN --mount=type=bind,source=deploy/ollama-0.32.1-2.alnx4.x86_64.rpm,target=/tmp/ollama.rpm \
+    sed -i -e "s/cloud.aliyuncs/aliyun/g" /etc/yum.repos.d/*.repo \
     && dnf install --assumeyes alinux-agentic-os-repos \
     && sed -i -e "s/cloud.aliyuncs/aliyun/g" /etc/yum.repos.d/*.repo \
-    && dnf install --assumeyes "${OLLAMA_NEVRA}" \
+    && dnf install --assumeyes /tmp/ollama.rpm \
     && ollama --version \
     && dnf clean all \
     && rm -rf /var/cache/dnf/*
