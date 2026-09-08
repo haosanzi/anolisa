@@ -62,6 +62,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "asc-action-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "asc-agentsight-client"
 version = "0.1.0"
 dependencies = [
