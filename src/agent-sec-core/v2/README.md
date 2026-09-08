@@ -5,7 +5,9 @@ Administration Point, first-version PAP daemon protocol, product Policy-template
 compiler, protocol-independent Unix-domain-socket service framework, and runnable
 foreground process bootstrap, together with the first AgentSight file-deletion
 target Adapter, and its independent deployment Client used by later AgentSecCore
-V2 work packages. It deliberately contains no durable persistence, Policy runtime,
+V2 work packages. It also carries the first Action data-plane method,
+`action.prompt_scan`, whose multi-layer injection/safety detection engine is
+ported from V1. It deliberately contains no durable persistence, Policy runtime,
 reconciliation scheduling worker, daemon reconciliation wiring, or outbox.
 The synchronous single-attempt reconciliation core is available as `asc-pcp`.
 
@@ -42,14 +44,17 @@ The current crates are:
 - `asc-pap-repository-memory`: explicitly temporary process-local Repository
   adapter used only to keep daemon/PAP integration runnable before durable
   persistence lands; also implements aggregate reads/CAS over PAP's Binding map.
-- `asc-daemon-protocol`: strict request/response contracts and an explicit
-  allowlist for 15 Policy, Scope, and Binding administration methods.
+- `asc-daemon-protocol`: strict request/response contracts and a closed method
+  table of 15 Policy, Scope, and Binding administration methods plus the single
+  `action.prompt_scan` data-plane method.
 - `asc-daemon-handler`: inbound protocol adapter that decodes daemon requests,
-  applies server-owned authorization, routes PAP methods, and projects protocol
-  responses without depending on a concrete Repository or compiler.
-- `asc-daemon-core`: trusted Principal construction boundary and the
-  `PolicyAdministration` application port. `PapService<R, C>` implements this
-  port directly, so repository/compiler generics do not leak into dispatch.
+  applies server-owned authorization, routes PAP and Action methods, and
+  projects protocol responses without depending on a concrete Repository,
+  compiler, or detection engine.
+- `asc-daemon-core`: trusted Principal construction boundary, the
+  `PolicyAdministration` application port, and the `PromptScanning` Action port.
+  `PapService<R, C>` implements the former directly, so repository/compiler
+  generics do not leak into dispatch.
 - `asc-daemon-service`: bounded UDS admission, one-request framing, kernel peer
   credentials, dispatcher/rejection-encoder injection, connection isolation,
   dispatch cancellation, and controlled drain.
@@ -62,17 +67,62 @@ The current crates are:
   top-level commands; `commands/{policy,scope,binding}.rs` own their arguments and
   request mappings, with pagination and encoding helpers in `commands/common.rs`.
 - `asc-daemon`: foreground process and composition root that configures and
-  injects concrete adapters into the daemon service.
+  injects concrete adapters into the daemon service, including the
+  `PromptScanService` that wires the detection engine behind the
+  `PromptScanning` port.
 - `asc-model-client`: loopback-only HTTP client for local model inference
   backends behind a backend-independent `ModelClient` port. Endpoint and timeout
   are a validated snapshot built once rather than an environment read per
   request, a non-loopback endpoint is refused at construction, and one bounded
   timeout covers connect, read, and write alongside a single retry of transient
-  failures. No crate in this workspace depends on it yet.
+  failures. `asc-capability-prompt-scan` uses it for the model-backed scan modes.
+- `asc-action-types`: stable data-only Action wire contracts. Requests decode
+  strictly (camelCase fields, `deny_unknown_fields`), and execution status
+  (`ActionError`) is separated from the business outcome (`PromptScanOutput`
+  carrying a `Verdict`).
+- `asc-action-runtime`: transport-independent execution spine that runs the
+  fixed reject-if-cancelled/validate/execute sequence per Action and emits
+  exactly one audit record whichever way an invocation ends. The audit sink
+  defaults to `NullAuditSink`, so records are discarded until a sink is wired.
+- `asc-capability-prompt-scan`: the ported V1 multi-layer detection engine and
+  its `PromptScanExecutor`. The `fast` mode is rule-only and always ready; the
+  `standard`/`strict`/`multi_turn` scanners are built on first use and depend on
+  a reachable model service.
 
 The crate relationships, acceptance types, executable pass/fail matrix,
 compatibility report, direct-consumer evidence, and rollback boundary are recorded
-in [`PAP_DAEMON_API_ACCEPTANCE_zh.md`](../docs/design/PAP_DAEMON_API_ACCEPTANCE_zh.md).
+in [`PAP_DAEMON_API_ACCEPTANCE_zh.md`](../docs/design/PAP_DAEMON_API_ACCEPTANCE_zh.md)
+for the PAP methods and
+[`ACTION_PROMPT_SCAN_ACCEPTANCE_zh.md`](../docs/design/ACTION_PROMPT_SCAN_ACCEPTANCE_zh.md)
+for `action.prompt_scan`.
+
+## Action data plane
+
+`action.prompt_scan` is the first and only Action data-plane method. Its
+boundary decisions are:
+
+- **Access policy**: it uses `AccessPolicy::AuthenticatedCaller`, a variant
+  distinct from `PolicyAdministrator`. Scanning is a read-only advisory over the
+  caller's own text, so any kernel-authenticated local peer (`LocalUser` or
+  `PolicyAdministrator`) may call it. Authorization never reads a UID or role
+  from the request body.
+- **Wire break from V1**: the request/response are remapped to the V2 Action
+  contract and deliberately break the V1 command-line JSON. Fields are camelCase
+  with `deny_unknown_fields`; there is no `ok`/`schema_version` envelope; and the
+  per-request `engineInitMs` is gone because the daemon reuses scanners built
+  outside the request path and reports only `scanMs`.
+- **Cancellation**: unlike PAP dispatch, an Action carries a per-invocation
+  `ExecutionContext` (deadline plus cancellation) so a long scan bails out for a
+  caller that has already left.
+- **Audit**: `ActionRuntime` emits exactly one audit record per invocation, but
+  the composition root wires the default `NullAuditSink`, so records are
+  currently discarded — there is no persistence and no stderr trail. The `log`
+  facade is declared but no logger is installed.
+- **Mode availability**: only `fast` runs offline and deterministically. The
+  `standard`/`strict`/`multi_turn` scanners are built lazily on first use and
+  need a reachable model service (Ollama); without one, those modes degrade or
+  return `unavailable`. A daemon that never invokes them never contacts a model
+  service.
 
 The [scan capability development guide (Chinese)](../docs/design/V2_SCAN_CAPABILITY_DEVELOPMENT_GUIDE_zh.md)
 maps Prompt Scan and Code Scan migration work onto this checkout, including module
