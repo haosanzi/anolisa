@@ -11,6 +11,7 @@ members = [
     "crates/daemon/asc-daemon-protocol",
     "crates/daemon/asc-daemon-service",
     "crates/foundation/asc-foundation-types",
+    "crates/asc-model-client",
     "crates/integrations/asc-agentsight-client",
     "crates/policy/adapters/asc-policy-adapter-agentsight",
     "crates/policy/asc-pap",
@@ -39,6 +40,7 @@ asc-daemon-handler = { path = "crates/daemon/asc-daemon-handler" }
 asc-daemon-protocol = { path = "crates/daemon/asc-daemon-protocol" }
 asc-daemon-service = { path = "crates/daemon/asc-daemon-service" }
 asc-foundation-types = { path = "crates/foundation/asc-foundation-types" }
+asc-model-client = { path = "crates/asc-model-client" }
 asc-pap = { path = "crates/policy/asc-pap" }
 asc-pap-repository-memory = { path = "crates/policy/asc-pap-repository-memory" }
 asc-pcp = { path = "crates/policy/asc-pcp" }
@@ -48,13 +50,17 @@ asc-policy-target-contracts = { path = "crates/policy/asc-policy-target-contract
 asc-policy-repository = { path = "crates/policy/asc-policy-repository" }
 asc-policy-types = { path = "crates/policy/asc-policy-types" }
 clap = { version = "4.6", features = ["derive"] }
+log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 socket2 = "0.6"
 sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
-ureq = { version = "2.12", default-features = false, features = ["tls"] }
+# json for the model client's Ollama calls; tls for the agentsight client.
+ureq = { version = "2.12", default-features = false, features = ["tls", "json"] }
+# Same parser ureq resolves requests with, so base_url validation cannot
+# disagree with the transport about which host is being contacted.
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 

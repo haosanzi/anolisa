@@ -1,0 +1,19 @@
+[package]
+name = "asc-model-client"
+description = "Local-only HTTP client for model inference backends used by AgentSecCore V2 capabilities"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+log = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+ureq = { workspace = true }
+url = { workspace = true }
+
+[lints]
+workspace = true

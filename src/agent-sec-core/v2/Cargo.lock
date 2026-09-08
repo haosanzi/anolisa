@@ -171,6 +171,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "asc-model-client"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "serde_json",
+ "thiserror",
+ "ureq",
+ "url",
+]
+
+[[package]]
 name = "asc-pap"
 version = "0.1.0"
 dependencies = [
@@ -985,6 +996,8 @@ dependencies = [
  "once_cell",
  "rustls",
  "rustls-pki-types",
+ "serde",
+ "serde_json",
  "url",
  "webpki-roots 0.26.11",
 ]

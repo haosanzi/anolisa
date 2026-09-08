@@ -63,6 +63,12 @@ The current crates are:
   request mappings, with pagination and encoding helpers in `commands/common.rs`.
 - `asc-daemon`: foreground process and composition root that configures and
   injects concrete adapters into the daemon service.
+- `asc-model-client`: loopback-only HTTP client for local model inference
+  backends behind a backend-independent `ModelClient` port. Endpoint and timeout
+  are a validated snapshot built once rather than an environment read per
+  request, a non-loopback endpoint is refused at construction, and one bounded
+  timeout covers connect, read, and write alongside a single retry of transient
+  failures. No crate in this workspace depends on it yet.
 
 The crate relationships, acceptance types, executable pass/fail matrix,
 compatibility report, direct-consumer evidence, and rollback boundary are recorded
