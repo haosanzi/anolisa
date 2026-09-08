@@ -5,6 +5,7 @@ resolver = "3"
 members = [
     "apps/asc-cli",
     "apps/asc-daemon",
+    "crates/asc-capability-prompt-scan",
     "crates/daemon/asc-daemon-client",
     "crates/daemon/asc-daemon-core",
     "crates/daemon/asc-daemon-handler",
@@ -33,6 +34,7 @@ publish = false
 
 [workspace.dependencies]
 asc-agentsight-client = { path = "crates/integrations/asc-agentsight-client" }
+asc-capability-prompt-scan = { path = "crates/asc-capability-prompt-scan" }
 asc-daemon = { path = "apps/asc-daemon" }
 asc-daemon-client = { path = "crates/daemon/asc-daemon-client" }
 asc-daemon-core = { path = "crates/daemon/asc-daemon-core" }
@@ -49,20 +51,38 @@ asc-policy-engine = { path = "crates/policy/asc-policy-engine" }
 asc-policy-target-contracts = { path = "crates/policy/asc-policy-target-contracts" }
 asc-policy-repository = { path = "crates/policy/asc-policy-repository" }
 asc-policy-types = { path = "crates/policy/asc-policy-types" }
+base64 = "0.22"
 clap = { version = "4.6", features = ["derive"] }
 log = "0.4"
+percent-encoding = "2.3"
+regex = "1.10"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# preserve_order keeps `Value::Object` in insertion order, so a hand-built
+# JSON object serializes in the order the code declares rather than
+# alphabetically. Scan results depend on it to publish a stable, logical
+# field order.
+serde_json = { version = "1", features = ["preserve_order"] }
+serde_yaml = "0.9"
 socket2 = "0.6"
 sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+unicode-normalization = "0.1"
+unicode-properties = "0.1"
 # json for the model client's Ollama calls; tls for the agentsight client.
 ureq = { version = "2.12", default-features = false, features = ["tls", "json"] }
 # Same parser ureq resolves requests with, so base_url validation cannot
 # disagree with the transport about which host is being contacted.
 url = "2"
 uuid = { version = "1", features = ["v4"] }
+
+[profile.dev.package]
+# Rule-set startup is dominated by runtime regex compilation; unoptimised,
+# these make a dev-profile scan ~7x slower.
+aho-corasick.opt-level = 3
+regex.opt-level = 3
+regex-automata.opt-level = 3
+regex-syntax.opt-level = 3
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
