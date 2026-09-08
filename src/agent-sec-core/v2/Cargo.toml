@@ -6,6 +6,7 @@ members = [
     "apps/asc-cli",
     "apps/asc-daemon",
     "crates/asc-action-types",
+    "crates/asc-action-runtime",
     "crates/asc-capability-prompt-scan",
     "crates/daemon/asc-daemon-client",
     "crates/daemon/asc-daemon-core",
@@ -35,6 +36,7 @@ publish = false
 
 [workspace.dependencies]
 asc-action-types = { path = "crates/asc-action-types" }
+asc-action-runtime = { path = "crates/asc-action-runtime" }
 asc-agentsight-client = { path = "crates/integrations/asc-agentsight-client" }
 asc-capability-prompt-scan = { path = "crates/asc-capability-prompt-scan" }
 asc-daemon = { path = "apps/asc-daemon" }

@@ -229,7 +229,7 @@ impl ScanResult {
     /// Build a human-readable one-liner explaining the scan outcome.
     ///
     /// A missing or 0.0 score suppresses the confidence suffix.
-    fn build_summary(&self) -> String {
+    pub(crate) fn build_summary(&self) -> String {
         // Degraded scan with no positive finding: the verdict is a PASS backed
         // by fewer layers than configured, so neither the threat template below
         // (which would print a nonsensical "[unknown] Benign detected") nor a
