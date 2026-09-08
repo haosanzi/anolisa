@@ -2,9 +2,11 @@
 
 #![forbid(unsafe_code)]
 
+mod action;
 mod identity;
 mod pap;
 
+pub use action::PromptScanning;
 pub use identity::{
     PeerCredentials, Principal, PrincipalPolicy, PrincipalPolicyError, PrincipalRole,
     RootManagedPrincipalPolicy,

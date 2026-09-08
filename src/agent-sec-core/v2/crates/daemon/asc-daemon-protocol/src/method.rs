@@ -1,4 +1,7 @@
-//! Closed PAP method inventory and access metadata.
+//! Closed daemon method inventory and access metadata.
+
+/// Inspect one prompt (or conversation) for injection and safety risk.
+pub const ACTION_PROMPT_SCAN: &str = "action.prompt_scan";
 
 /// Create one Policy identity from an authored template.
 pub const POLICY_TEMPLATES_CREATE: &str = "policy.templates.create";
@@ -106,11 +109,20 @@ pub enum PapMethod {
     Binding(BindingMethod),
 }
 
+/// One Action data-plane operation resolved before parameter decoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActionMethod {
+    /// Prompt injection / safety scan.
+    PromptScan,
+}
+
 /// Closed daemon method identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MethodId {
     /// PAP administration method.
     Pap(PapMethod),
+    /// Action data-plane method.
+    Action(ActionMethod),
 }
 
 /// Server-owned access policy for a method.
@@ -118,6 +130,12 @@ pub enum MethodId {
 pub enum AccessPolicy {
     /// Requires a server-assigned Policy administrator principal.
     PolicyAdministrator,
+    /// Requires only an authenticated local caller.
+    ///
+    /// A data-plane capability such as scanning is available to any peer the
+    /// server has authenticated; it is not policy administration, so it does
+    /// not demand the administrator role.
+    AuthenticatedCaller,
 }
 
 /// Static method metadata used by authorization before application dispatch.
@@ -133,6 +151,9 @@ impl MethodId {
         match self {
             Self::Pap(_) => Metadata {
                 access: AccessPolicy::PolicyAdministrator,
+            },
+            Self::Action(_) => Metadata {
+                access: AccessPolicy::AuthenticatedCaller,
             },
         }
     }
@@ -156,6 +177,7 @@ pub fn resolve(method: &str) -> Option<MethodId> {
         POLICY_BINDINGS_GET => Some(MethodId::Pap(PapMethod::Binding(BindingMethod::Get))),
         POLICY_BINDINGS_LIST => Some(MethodId::Pap(PapMethod::Binding(BindingMethod::List))),
         POLICY_BINDINGS_DELETE => Some(MethodId::Pap(PapMethod::Binding(BindingMethod::Delete))),
+        ACTION_PROMPT_SCAN => Some(MethodId::Action(ActionMethod::PromptScan)),
         _ => None,
     }
 }

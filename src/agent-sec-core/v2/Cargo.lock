@@ -138,6 +138,9 @@ dependencies = [
 name = "asc-daemon"
 version = "0.1.0"
 dependencies = [
+ "asc-action-runtime",
+ "asc-action-types",
+ "asc-capability-prompt-scan",
  "asc-daemon-core",
  "asc-daemon-handler",
  "asc-daemon-protocol",
@@ -169,6 +172,8 @@ dependencies = [
 name = "asc-daemon-core"
 version = "0.1.0"
 dependencies = [
+ "asc-action-runtime",
+ "asc-action-types",
  "asc-foundation-types",
  "asc-pap",
  "asc-policy-types",
@@ -179,6 +184,8 @@ dependencies = [
 name = "asc-daemon-handler"
 version = "0.1.0"
 dependencies = [
+ "asc-action-runtime",
+ "asc-action-types",
  "asc-daemon-core",
  "asc-daemon-protocol",
  "asc-daemon-service",

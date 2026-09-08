@@ -6,11 +6,11 @@ use asc_daemon_core::{PolicyAdministration, PolicyAdministrationError, Principal
 use asc_daemon_protocol::method::{BindingMethod, PapMethod, PolicyMethod, ScopeMethod};
 use asc_daemon_protocol::{
     CreateBindingParams, CreatePolicyParams, CreateScopeParams, DaemonResponse, ListParams,
-    ListResult, MAX_DAEMON_ERROR_MESSAGE_BYTES, RequestId, ResourceParams, RevisionParams,
-    UpdateBindingParams, UpdatePolicyParams, UpdateScopeParams, error_code,
+    ListResult, RequestId, ResourceParams, RevisionParams, UpdateBindingParams, UpdatePolicyParams,
+    UpdateScopeParams, error_code,
 };
 
-const INVALID_PARAMETER_MESSAGE: &str = "request parameters are invalid";
+use crate::dispatcher::bounded_parameter_error;
 
 /// PAP-specific protocol adapter with repository/compiler types erased.
 pub(super) struct PapHandler {
@@ -181,15 +181,6 @@ fn decode<T: serde::de::DeserializeOwned>(
         .map_err(|error| PapDispatchError::BadRequest(bounded_parameter_error(&error)))
 }
 
-fn bounded_parameter_error(error: &serde_json::Error) -> String {
-    let message = error.to_string();
-    if message.len() > MAX_DAEMON_ERROR_MESSAGE_BYTES {
-        INVALID_PARAMETER_MESSAGE.to_owned()
-    } else {
-        message
-    }
-}
-
 fn encode<T: serde::Serialize>(value: T) -> Result<serde_json::Value, PapDispatchError> {
     serde_json::to_value(value).map_err(|_| PapDispatchError::Projection)
 }
@@ -231,6 +222,8 @@ fn project_application_error(error: &PolicyAdministrationError) -> (&'static str
 
 #[cfg(test)]
 mod tests {
+    use asc_daemon_protocol::MAX_DAEMON_ERROR_MESSAGE_BYTES;
+
     use super::*;
 
     #[test]
@@ -248,7 +241,7 @@ mod tests {
         let Err(PapDispatchError::BadRequest(message)) = oversized else {
             panic!("an unknown parameter must fail decoding");
         };
-        assert_eq!(message, INVALID_PARAMETER_MESSAGE);
+        assert_eq!(message, crate::dispatcher::INVALID_PARAMETER_MESSAGE);
     }
 
     #[test]

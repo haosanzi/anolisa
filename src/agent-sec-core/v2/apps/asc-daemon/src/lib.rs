@@ -6,11 +6,13 @@
 
 #![forbid(unsafe_code)]
 
+mod action;
 mod bootstrap;
 mod cli;
 mod runtime;
 mod signals;
 
+pub use action::PromptScanService;
 pub use bootstrap::{BootstrapConfig, BootstrapError, default_service_config, serve};
 pub use cli::{Cli, CliError, ParseOutcome};
 pub use runtime::{RuntimeError, run_with_shutdown_timeout};

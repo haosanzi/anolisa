@@ -2,7 +2,9 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
-use asc_daemon::{Cli, ParseOutcome, ProcessSignals, run_with_shutdown_timeout, serve};
+use asc_daemon::{
+    Cli, ParseOutcome, ProcessSignals, PromptScanService, run_with_shutdown_timeout, serve,
+};
 use asc_daemon_core::{PrincipalPolicy, RootManagedPrincipalPolicy};
 use asc_daemon_handler::{DaemonDispatcher, JsonRejectionEncoder};
 use asc_daemon_service::ShutdownToken;
@@ -47,11 +49,18 @@ async fn run() -> ExitCode {
     };
     let repository = Arc::new(ProcessLocalPapRepository::default());
     let pap = PapService::new(repository, Arc::new(PolicyTemplateCompiler));
+    let prompt_scan = match PromptScanService::new() {
+        Ok(service) => Arc::new(service),
+        Err(problem) => {
+            eprintln!("asc-daemon: prompt scan capability is unavailable: {problem}");
+            return ExitCode::FAILURE;
+        }
+    };
     let principal_policy = Arc::new(RootManagedPrincipalPolicy::with_admin_uids(
         cli.policy_admin_uids,
     ));
     let policy_for_handler: Arc<dyn PrincipalPolicy> = principal_policy.clone();
-    let dispatcher = Arc::new(DaemonDispatcher::new(pap, policy_for_handler));
+    let dispatcher = Arc::new(DaemonDispatcher::new(pap, prompt_scan, policy_for_handler));
     eprintln!("asc-daemon: warning: PAP state is process-local and is lost on restart");
 
     let shutdown = ShutdownToken::new();

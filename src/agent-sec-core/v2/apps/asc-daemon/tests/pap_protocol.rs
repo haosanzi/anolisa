@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use asc_daemon::{BootstrapConfig, serve};
+use asc_daemon::{BootstrapConfig, PromptScanService, serve};
 use asc_daemon_core::{
     PeerCredentials, PolicyAdministration, PolicyAdministrationError, Principal, PrincipalPolicy,
     PrincipalRole, ResourcePage,
@@ -83,6 +83,7 @@ impl RunningPapDaemon {
         let socket_path = directory.join("daemon.sock");
         let dispatcher = Arc::new(DaemonDispatcher::new(
             application,
+            Arc::new(PromptScanService::new().expect("fast scanner builds offline")),
             Arc::new(FixedRolePolicy(role)),
         ));
         let shutdown = asc_daemon_service::ShutdownToken::new();
@@ -342,6 +343,7 @@ fn all_frozen_methods_route_once_and_return_domain_values_directly() {
     let expected_binding = serde_json::to_value(&application.binding).unwrap();
     let handler = DaemonDispatcher::new(
         application,
+        Arc::new(PromptScanService::new().expect("fast scanner builds offline")),
         Arc::new(FixedRolePolicy(PrincipalRole::PolicyAdministrator)),
     );
     let fixtures: Vec<Value> = serde_json::from_str(include_str!(
@@ -395,6 +397,7 @@ fn server_assigned_non_admin_role_is_not_overridden_by_request_data() {
     let calls = Arc::clone(&application.calls);
     let handler = DaemonDispatcher::new(
         application,
+        Arc::new(PromptScanService::new().expect("fast scanner builds offline")),
         Arc::new(FixedRolePolicy(PrincipalRole::LocalUser)),
     );
     let response = handler.handle(
@@ -418,6 +421,7 @@ fn server_assigned_non_admin_role_is_not_overridden_by_request_data() {
 fn unknown_methods_and_invalid_method_params_use_distinct_errors() {
     let handler = DaemonDispatcher::new(
         RecordingAdministration::new(),
+        Arc::new(PromptScanService::new().expect("fast scanner builds offline")),
         Arc::new(FixedRolePolicy(PrincipalRole::PolicyAdministrator)),
     );
     for (method, params, expected_code, expected_message) in [
