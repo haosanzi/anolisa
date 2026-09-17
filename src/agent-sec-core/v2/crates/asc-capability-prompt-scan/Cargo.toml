@@ -6,6 +6,8 @@ description = "Prompt injection / jailbreak scanner: rule engine, model-backed c
 license = "Apache-2.0"
 
 [dependencies]
+asc-action-runtime = { workspace = true }
+asc-action-types = { workspace = true }
 base64 = { workspace = true }
 log = { workspace = true }
 asc-model-client = { path = "../asc-model-client" }

@@ -38,6 +38,8 @@ pub const POLICY_BINDINGS_DELETE: &str = "policy.bindings.delete";
 
 /// Scan one Bash or Python snippet for pre-execution security issues.
 pub const ACTION_CODE_SCAN: &str = "action.code_scan";
+/// Scan one prompt for injection or jailbreak attempts before it reaches a model.
+pub const ACTION_PROMPT_SCAN: &str = "action.prompt_scan";
 
 /// Complete PAP method inventory for this protocol version.
 pub const PAP_METHODS: [&str; 15] = [
@@ -59,7 +61,7 @@ pub const PAP_METHODS: [&str; 15] = [
 ];
 
 /// Complete Action-capability method inventory for this protocol version.
-pub const ACTION_METHODS: [&str; 1] = [ACTION_CODE_SCAN];
+pub const ACTION_METHODS: [&str; 2] = [ACTION_CODE_SCAN, ACTION_PROMPT_SCAN];
 
 /// One Policy operation resolved from its exact wire method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,6 +124,8 @@ pub enum PapMethod {
 pub enum ActionMethod {
     /// Pre-execution code scan.
     CodeScan,
+    /// Pre-execution prompt scan.
+    PromptScan,
 }
 
 /// Closed daemon method identity.
@@ -187,6 +191,7 @@ pub fn resolve(method: &str) -> Option<MethodId> {
         POLICY_BINDINGS_LIST => Some(MethodId::Pap(PapMethod::Binding(BindingMethod::List))),
         POLICY_BINDINGS_DELETE => Some(MethodId::Pap(PapMethod::Binding(BindingMethod::Delete))),
         ACTION_CODE_SCAN => Some(MethodId::Action(ActionMethod::CodeScan)),
+        ACTION_PROMPT_SCAN => Some(MethodId::Action(ActionMethod::PromptScan)),
         _ => None,
     }
 }

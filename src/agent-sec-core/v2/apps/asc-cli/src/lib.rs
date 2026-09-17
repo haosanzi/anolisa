@@ -14,13 +14,14 @@ use asc_foundation_types::{DAEMON_SOCKET_ENV, daemon_socket_path_from_env};
 use clap::Parser;
 pub use commands::CapabilitiesCommand;
 use commands::Command;
+pub use commands::scan_prompt::PromptScanPlan;
 
 /// Parsed invocation for one CLI command.
 #[derive(Debug)]
 pub struct Cli {
     /// Absolute endpoint of an already-running daemon; absent for local commands.
     socket: Option<PathBuf>,
-    timeout_ms: u32,
+    timeout_ms: Option<u32>,
     command: Command,
 }
 
@@ -47,8 +48,9 @@ struct Arguments {
     #[arg(long, global = true)]
     socket: Option<PathBuf>,
     /// Total connect/write/read deadline in milliseconds; requests are never retried.
-    #[arg(long, global = true, default_value_t = 5000, value_parser = clap::value_parser!(u32).range(1..))]
-    timeout_ms: u32,
+    /// When omitted, the default depends on the command (see [`Cli::timeout`]).
+    #[arg(long, global = true, value_parser = clap::value_parser!(u32).range(1..))]
+    timeout_ms: Option<u32>,
     #[command(subcommand)]
     command: Command,
 }
@@ -126,11 +128,26 @@ impl Cli {
     }
 
     /// Returns the single call deadline duration.
+    ///
+    /// Unspecified deadlines default per command: prompt scans wait for a
+    /// model-backed layer whose inference can take tens of seconds (the
+    /// daemon budgets 35 s per dispatch, and the V1 CLI had no timeout at
+    /// all), while every other command keeps the 5 s interactive default.
     pub fn timeout(&self) -> Duration {
-        Duration::from_millis(u64::from(self.timeout_ms))
+        let default_ms = if self.command.is_scan_prompt() {
+            120_000
+        } else {
+            5_000
+        };
+        Duration::from_millis(u64::from(self.timeout_ms.unwrap_or(default_ms)))
     }
 
     /// Delegates to the selected command to construct a typed daemon request.
+    ///
+    /// Scan-prompt invocations may carry several requests (a batch file or
+    /// one per conversation payload); [`Cli::prompt_scan_run`] is the
+    /// scan-prompt entry point, and this method serves the single-request
+    /// commands.
     ///
     /// # Errors
     /// Returns a file read, template decode, or request encoding error.
@@ -138,9 +155,23 @@ impl Cli {
         self.command.request()
     }
 
+    /// Resolves a scan-prompt invocation into its requests and warnings.
+    ///
+    /// # Errors
+    /// Returns input-collection failures (empty stdin, malformed JSON
+    /// payload, missing input file) before any daemon traffic.
+    pub fn prompt_scan_run(&self) -> Result<PromptScanPlan, InputError> {
+        self.command.prompt_scan_run()
+    }
+
     /// Whether this invocation uses the V1-compatible scan-code projection.
     pub const fn is_scan_code(&self) -> bool {
         self.command.is_scan_code()
+    }
+
+    /// Whether this invocation uses the prompt-scan projection.
+    pub const fn is_scan_prompt(&self) -> bool {
+        self.command.is_scan_prompt()
     }
 }
 
@@ -176,7 +207,41 @@ pub enum InputError {
     /// The V1-compatible scan-code command received no non-whitespace source.
     #[error("Error: --code is required (use --code '<source>')")]
     EmptyCode,
-    /// Template file access failed.
+    /// The selected output format is neither `json` nor `text`.
+    #[error("Error: Invalid format '{0}'. Choose from: json, text")]
+    InvalidFormat(String),
+    /// `--text`/`--input` cannot combine with `multi_turn`, which reads its
+    /// JSON payload from stdin.
+    #[error(
+        "Error: --text and --input are not supported with multi_turn mode. \
+         Pipe a JSON payload via stdin:\n  \
+         echo '{{\"history\":[...],\"current_query\":\"...\",\"assistant_response\":\"...\"}}' | \
+         agent-sec-cli scan-prompt --mode multi_turn"
+    )]
+    MultiTurnTextConflict,
+    /// Stdin carried no input at all.
+    #[error("Error: No input received from stdin.")]
+    StdinEmpty,
+    /// The `multi_turn` stdin payload is not valid JSON.
+    #[error("Error: Invalid JSON: {0}")]
+    InvalidJson(String),
+    /// The `multi_turn` payload lacks a `history` list, a `current_query`
+    /// string, or an `assistant_response` string.
+    #[error(
+        "Error: payload must include a 'history' list, a 'current_query' \
+         string, and an 'assistant_response' string."
+    )]
+    InvalidPayload,
+    /// The `multi_turn` payload's `current_query` is blank.
+    #[error("Error: current_query is empty.")]
+    EmptyCurrentQuery,
+    /// The `--input` file exists but contains no scannable line.
+    #[error("Error: File is empty: {0}")]
+    FileEmpty(PathBuf),
+    /// The `--input` file does not exist.
+    #[error("Error: File not found: {0}")]
+    FileNotFound(PathBuf),
+    /// Template or stdin file access failed.
     #[error("cannot read Policy template: {0}")]
     Read(#[from] std::io::Error),
     /// Bound input before parsing or constructing a request.
@@ -188,6 +253,31 @@ pub enum InputError {
     /// A locally rendered command was asked for a daemon request.
     #[error("this command is rendered locally and sends no daemon request")]
     LocalCommand,
+    /// The scan-prompt command builds its request batch (and reads stdin)
+    /// through [`Cli::prompt_scan_run`], not the single-request path.
+    #[error("scan-prompt requests are resolved through prompt_scan_run")]
+    PromptScanBatch,
+}
+
+impl InputError {
+    /// Whether the message already reads as a terminal usage error, so the
+    /// binary prints it verbatim instead of behind the `agent-sec-cli:`
+    /// prefix. The scan commands own their hints this way, mirroring V1.
+    #[must_use]
+    pub const fn is_usage_hint(&self) -> bool {
+        matches!(
+            self,
+            Self::EmptyCode
+                | Self::InvalidFormat(_)
+                | Self::MultiTurnTextConflict
+                | Self::StdinEmpty
+                | Self::InvalidJson(_)
+                | Self::InvalidPayload
+                | Self::EmptyCurrentQuery
+                | Self::FileEmpty(_)
+                | Self::FileNotFound(_)
+        )
+    }
 }
 
 #[cfg(test)]

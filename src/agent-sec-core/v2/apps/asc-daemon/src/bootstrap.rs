@@ -12,7 +12,11 @@ const DEFAULT_MAX_CONNECTIONS: usize = 64;
 const DEFAULT_MAX_REJECTION_CONNECTIONS: usize = 8;
 const DEFAULT_REJECTION_ENCODE_TIMEOUT: Duration = Duration::from_millis(250);
 const DEFAULT_REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(5);
-const DEFAULT_DISPATCH_TIMEOUT: Duration = Duration::from_secs(5);
+// Must cover the prompt scanner's L2 model call: the model service's own
+// budget defaults to 30s (`AGENT_SEC_MODEL_SERVICE_TIMEOUT`), so dispatch
+// has to outlive the slowest configured scan instead of cutting it off at
+// the generic transport default.
+const DEFAULT_DISPATCH_TIMEOUT: Duration = Duration::from_secs(35);
 const DEFAULT_RESPONSE_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 const DEFAULT_ACCEPT_ERROR_BACKOFF: Duration = Duration::from_millis(50);

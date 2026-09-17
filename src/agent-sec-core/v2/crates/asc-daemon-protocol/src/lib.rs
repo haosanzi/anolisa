@@ -15,7 +15,7 @@ pub mod method;
 mod pap;
 mod response;
 
-pub use action::CodeScanParams;
+pub use action::{CodeScanParams, PromptScanParams};
 pub use common::{ListParams, ListResult, ResourceParams, RevisionParams};
 pub use envelope::DaemonRequest;
 pub use pap::{
