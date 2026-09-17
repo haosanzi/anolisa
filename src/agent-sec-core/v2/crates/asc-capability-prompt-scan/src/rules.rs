@@ -257,7 +257,7 @@ mod tests {
         assert_eq!(
             actual, expected,
             "generated ATR packs disagree with rules/atr/disabled.yaml — \
-             re-run `cargo run -p prompt-scanner --bin sync_atr` instead of \
+             re-run `cargo run -p asc-capability-prompt-scan --bin sync_atr` instead of \
              editing the packs"
         );
         // Every disable needs a rationale: the reason is the only record of

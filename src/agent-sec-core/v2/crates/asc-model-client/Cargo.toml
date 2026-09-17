@@ -1,5 +1,5 @@
 [package]
-name = "model-service"
+name = "asc-model-client"
 version = "0.1.0"
 edition = "2021"
 description = "Shared HTTP client for local model inference backends (Ollama)"

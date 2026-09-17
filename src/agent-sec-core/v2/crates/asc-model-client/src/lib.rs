@@ -11,7 +11,7 @@
 //! Scanned prompts can carry credentials and PII, and the URL comes from the
 //! environment, so anything but loopback is treated as exfiltration.
 //!
-//! Consumers (prompt-scanner, future code/pii scanners) inject a
+//! Consumers (asc-capability-prompt-scan, future code/pii scanners) inject a
 //! [`ModelClient`] so their transport stays decoupled from this crate.
 
 use std::time::Duration;

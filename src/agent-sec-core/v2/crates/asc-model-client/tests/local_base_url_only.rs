@@ -6,7 +6,7 @@
 //! `set_var` mutates process-global state: a single `#[test]` leaves no
 //! sibling thread able to observe the variable mid-change.
 
-use model_service::create_client;
+use asc_model_client::create_client;
 
 const ENV_BASE_URL: &str = "AGENT_SEC_MODEL_SERVICE_BASE_URL";
 

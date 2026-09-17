@@ -39,7 +39,7 @@ use serde_json::{json, Map};
 use crate::error::ScannerError;
 use crate::models::qwen3_guard::{build_category_re, classify_via_chat, Qwen3GuardDialect};
 use crate::models::{Classifier, ClassifierResult};
-use model_service::{create_client, ModelClient, ModelOptions};
+use asc_model_client::{create_client, ModelClient, ModelOptions};
 
 /// Ollama tag for the Warden-Gen model (prompt and code domains).
 ///
@@ -205,7 +205,7 @@ impl Classifier for WardenGenClassifier {
 mod tests {
     use super::*;
     use crate::models::qwen3_guard::{Qwen3GuardClassifier, MODEL_QWEN3_GUARD};
-    use model_service::GenerateRequest;
+    use asc_model_client::GenerateRequest;
     use serde_json::Value;
     use std::sync::{Arc, Mutex};
 
@@ -239,7 +239,7 @@ mod tests {
         fn generate(
             &self,
             _request: &GenerateRequest<'_>,
-        ) -> Result<Value, model_service::ModelServiceError> {
+        ) -> Result<Value, asc_model_client::ModelServiceError> {
             unreachable!("Warden-Gen uses the chat endpoint only")
         }
 
@@ -250,7 +250,7 @@ mod tests {
             options: &ModelOptions,
             _logprobs: bool,
             _top_logprobs: u32,
-        ) -> Result<Value, model_service::ModelServiceError> {
+        ) -> Result<Value, asc_model_client::ModelServiceError> {
             *self.seen_options.lock().expect("options lock") = Some(options.clone());
             Ok(self.reply.clone())
         }
@@ -267,7 +267,7 @@ mod tests {
         fn generate(
             &self,
             _request: &GenerateRequest<'_>,
-        ) -> Result<Value, model_service::ModelServiceError> {
+        ) -> Result<Value, asc_model_client::ModelServiceError> {
             unreachable!()
         }
 
@@ -278,8 +278,8 @@ mod tests {
             _options: &ModelOptions,
             _logprobs: bool,
             _top_logprobs: u32,
-        ) -> Result<Value, model_service::ModelServiceError> {
-            Err(model_service::ModelServiceError::Inference(
+        ) -> Result<Value, asc_model_client::ModelServiceError> {
+            Err(asc_model_client::ModelServiceError::Inference(
                 "connection refused".into(),
             ))
         }

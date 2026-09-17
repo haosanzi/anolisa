@@ -1,5 +1,5 @@
 [package]
-name = "prompt-scanner"
+name = "asc-capability-prompt-scan"
 version = "0.1.0"
 edition = "2021"
 description = "Prompt injection / jailbreak scanner: rule engine, model-backed classification, and multi-turn intent detection"
@@ -8,7 +8,7 @@ license = "Apache-2.0"
 [dependencies]
 base64 = { workspace = true }
 log = { workspace = true }
-model-service = { path = "../model-service" }
+asc-model-client = { path = "../asc-model-client" }
 percent-encoding = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }

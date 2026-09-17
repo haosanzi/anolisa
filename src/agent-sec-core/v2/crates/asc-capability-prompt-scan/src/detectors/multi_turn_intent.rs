@@ -132,7 +132,7 @@ mod tests {
     use super::*;
     use crate::detectors::Conversation;
     use crate::models::multi_turn_intent::{Turn, DEFAULT_HARMFUL_THRESHOLD};
-    use model_service::{GenerateRequest, ModelClient, ModelOptions};
+    use asc_model_client::{GenerateRequest, ModelClient, ModelOptions};
     use serde_json::{json, Value};
 
     struct FakeClient {
@@ -148,7 +148,7 @@ mod tests {
         fn generate(
             &self,
             _request: &GenerateRequest<'_>,
-        ) -> Result<Value, model_service::ModelServiceError> {
+        ) -> Result<Value, asc_model_client::ModelServiceError> {
             Ok(self.body.clone())
         }
 
@@ -159,7 +159,7 @@ mod tests {
             _options: &ModelOptions,
             _logprobs: bool,
             _top_logprobs: u32,
-        ) -> Result<Value, model_service::ModelServiceError> {
+        ) -> Result<Value, asc_model_client::ModelServiceError> {
             unreachable!("L4 uses the generate endpoint only")
         }
     }
@@ -174,8 +174,8 @@ mod tests {
         fn generate(
             &self,
             _request: &GenerateRequest<'_>,
-        ) -> Result<Value, model_service::ModelServiceError> {
-            Err(model_service::ModelServiceError::Inference(
+        ) -> Result<Value, asc_model_client::ModelServiceError> {
+            Err(asc_model_client::ModelServiceError::Inference(
                 "connection refused".into(),
             ))
         }
@@ -187,7 +187,7 @@ mod tests {
             _options: &ModelOptions,
             _logprobs: bool,
             _top_logprobs: u32,
-        ) -> Result<Value, model_service::ModelServiceError> {
+        ) -> Result<Value, asc_model_client::ModelServiceError> {
             unreachable!()
         }
     }

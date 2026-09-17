@@ -12,7 +12,7 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
 use crate::error::ScannerError;
-use model_service::{create_client, GenerateRequest, ModelClient, ModelOptions};
+use asc_model_client::{create_client, GenerateRequest, ModelClient, ModelOptions};
 
 const MODEL_NAME_ENV: &str = "AGENT_SEC_OLLAMA_MODEL";
 const DEFAULT_MODEL_NAME: &str = "warden";
@@ -445,7 +445,7 @@ mod tests {
         fn generate(
             &self,
             request: &GenerateRequest<'_>,
-        ) -> Result<Value, model_service::ModelServiceError> {
+        ) -> Result<Value, asc_model_client::ModelServiceError> {
             *self.seen_prompt.lock().expect("lock") = Some(request.prompt.to_string());
             assert!(request.raw, "L4 must send a pre-templated raw prompt");
             assert!(request.logprobs, "L4 relies on logprobs");
@@ -462,7 +462,7 @@ mod tests {
             _options: &ModelOptions,
             _logprobs: bool,
             _top_logprobs: u32,
-        ) -> Result<Value, model_service::ModelServiceError> {
+        ) -> Result<Value, asc_model_client::ModelServiceError> {
             unreachable!("L4 uses the generate endpoint only")
         }
     }

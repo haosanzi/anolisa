@@ -21,7 +21,7 @@ use serde_json::{json, Map, Value};
 
 use crate::error::ScannerError;
 use crate::models::{Classifier, ClassifierResult};
-use model_service::{create_client, ModelClient, ModelOptions};
+use asc_model_client::{create_client, ModelClient, ModelOptions};
 
 /// Ollama tag for the guard model.
 ///
@@ -546,7 +546,7 @@ fn normalize_label(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use model_service::GenerateRequest;
+    use asc_model_client::GenerateRequest;
 
     /// Client returning a canned chat reply.
     struct FakeClient {
@@ -571,7 +571,7 @@ mod tests {
         fn generate(
             &self,
             _request: &GenerateRequest<'_>,
-        ) -> Result<Value, model_service::ModelServiceError> {
+        ) -> Result<Value, asc_model_client::ModelServiceError> {
             unreachable!("Qwen3Guard uses the chat endpoint only")
         }
 
@@ -582,7 +582,7 @@ mod tests {
             _options: &ModelOptions,
             _logprobs: bool,
             _top_logprobs: u32,
-        ) -> Result<Value, model_service::ModelServiceError> {
+        ) -> Result<Value, asc_model_client::ModelServiceError> {
             Ok(self.reply.clone())
         }
     }
@@ -598,7 +598,7 @@ mod tests {
         fn generate(
             &self,
             _request: &GenerateRequest<'_>,
-        ) -> Result<Value, model_service::ModelServiceError> {
+        ) -> Result<Value, asc_model_client::ModelServiceError> {
             unreachable!()
         }
 
@@ -609,8 +609,8 @@ mod tests {
             _options: &ModelOptions,
             _logprobs: bool,
             _top_logprobs: u32,
-        ) -> Result<Value, model_service::ModelServiceError> {
-            Err(model_service::ModelServiceError::Inference(
+        ) -> Result<Value, asc_model_client::ModelServiceError> {
+            Err(asc_model_client::ModelServiceError::Inference(
                 "connection refused".into(),
             ))
         }
