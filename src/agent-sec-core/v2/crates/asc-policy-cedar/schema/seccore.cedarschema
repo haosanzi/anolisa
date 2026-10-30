@@ -1,0 +1,81 @@
+namespace AgentSec {
+  entity Task;
+  entity Agent { agent_type: String, pid?: Long, task?: Task };
+  entity FilesystemResource { path: String, parent_directory?: FilesystemResource };
+  entity NetworkResource enum ["all"];
+  entity ProcessResource { program_path: String };
+  entity ToolResource;
+  entity ContentResource enum ["user_prompt", "tool_output", "tool_error", "model_output"];
+  entity ScanVerdict enum ["pass", "warn", "deny", "error"];
+  entity SkillStatus enum ["pass", "none", "drifted", "warn", "deny", "tampered", "unmanaged", "error"];
+
+  type TaskAuthorization = {
+    task: Task,
+    now: Long,
+    contract_revision: Long,
+    binding_revision: Long
+  };
+  type ResourceContext = { authorization?: TaskAuthorization };
+  type ProcessContext = {
+    input: {
+      cwd: String,
+      arg_count: Long,
+      arg1?: String,
+      arg2?: String
+    },
+    authorization?: TaskAuthorization
+  };
+
+  type ScanFact = { verdict: ScanVerdict };
+  type SkillFact = {
+    latest_status: SkillStatus,
+    reason_code: String,
+    active_version?: String
+  };
+  type SandboxMatchFact = {
+    block_match: Bool,
+    filesystem_risk: Bool,
+    network_match: Bool
+  };
+  type ToolContext = {
+    pii?: ScanFact,
+    code?: ScanFact,
+    skill?: SkillFact,
+    sandbox?: SandboxMatchFact,
+    authorization?: TaskAuthorization
+  };
+  type ContentContext = {
+    pii?: ScanFact,
+    prompt?: ScanFact,
+    skill?: SkillFact,
+    authorization?: TaskAuthorization
+  };
+
+  action "filesystem.read", "filesystem.list", "filesystem.metadata", "filesystem.write", "filesystem.execute",
+    "filesystem.create", "filesystem.delete", "filesystem.rename", "filesystem.chmod"
+  appliesTo {
+    principal: Agent,
+    resource: FilesystemResource,
+    context: ResourceContext
+  };
+  action "network.use" appliesTo {
+    principal: Agent,
+    resource: NetworkResource,
+    context: ResourceContext
+  };
+  action "process.spawn" appliesTo {
+    principal: Agent,
+    resource: ProcessResource,
+    context: ProcessContext
+  };
+  action "tool.invoke" appliesTo {
+    principal: Agent,
+    resource: ToolResource,
+    context: ToolContext
+  };
+  action "content.accept" appliesTo {
+    principal: Agent,
+    resource: ContentResource,
+    context: ContentContext
+  };
+}

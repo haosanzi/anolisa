@@ -1,0 +1,26 @@
+{
+  "goal": "审查 repo-A 当前变更并返回 bug 与安全问题",
+  "resources": {
+    "read": ["repo-A 当前变更"],
+    "write": [],
+    "egress": []
+  },
+  "read_selectors": [{"kind": "changes", "name": "repo-A"}],
+  "requested_actions": ["read"],
+  "prohibitions": ["file_mutation", "process_execution", "network_access", "remote_publication"],
+  "assumptions": [],
+  "observed_only": [],
+  "unresolved": [],
+  "external_influences": [],
+  "evidence": [
+    {"field": "/goal", "source_id": "task-input-1", "quote": "审查 repo-A 当前变更，检查潜在 bug 和安全问题，直接返回审查结论"},
+    {"field": "/resources/read/0", "source_id": "task-input-1", "quote": "repo-A 当前变更"},
+    {"field": "/read_selectors/0/kind", "source_id": "task-input-1", "quote": "repo-A 当前变更"},
+    {"field": "/read_selectors/0/name", "source_id": "task-input-1", "quote": "repo-A"},
+    {"field": "/requested_actions/0", "source_id": "task-input-1", "quote": "审查 repo-A 当前变更"},
+    {"field": "/prohibitions/0", "source_id": "task-input-1", "quote": "不要改文件"},
+    {"field": "/prohibitions/1", "source_id": "task-input-1", "quote": "不要运行测试"},
+    {"field": "/prohibitions/2", "source_id": "task-input-1", "quote": "不要联网"},
+    {"field": "/prohibitions/3", "source_id": "task-input-1", "quote": "不要提交或发布评论"}
+  ]
+}

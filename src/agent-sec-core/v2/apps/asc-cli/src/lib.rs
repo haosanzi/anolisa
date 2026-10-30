@@ -15,8 +15,8 @@ use asc_foundation_types::{DAEMON_SOCKET_ENV, daemon_socket_path_from_env};
 use clap::Parser;
 use commands::Command;
 pub use commands::{
-    CapabilitiesCommand, EventsCommand, EventsRunError, EventsTransport, PiiOutputFormat,
-    PromptScanPlan, ScanPromptInputError,
+    CapabilitiesCommand, EventsCommand, EventsRunError, EventsTransport, IntentFailure,
+    PiiOutputFormat, PromptScanPlan, ScanPromptInputError,
 };
 
 /// Parsed invocation for one CLI command.
@@ -102,7 +102,7 @@ impl Cli {
             let mut tokens = argv.iter().skip(1);
             let mut count = 0;
             while let Some(argument) = tokens.next() {
-                if argument == "--text" || argument == "--code" {
+                if argument == "--text" || argument == "--code" || argument == "--task" {
                     tokens.next();
                 } else if argument.as_bytes().split(|byte| *byte == b'=').next()
                     == Some(option.as_bytes())
@@ -133,6 +133,8 @@ impl Cli {
                 } else if arguments.command.is_llm_code_scan() {
                     u32::try_from(asc_model_client::MAX_CODE_SCAN_BUDGET.as_millis())
                         .unwrap_or(u32::MAX)
+                } else if arguments.command.is_intent() {
+                    45_000
                 } else if arguments.command.is_skill_sec() {
                     60_000
                 } else {
@@ -180,6 +182,14 @@ impl Cli {
     /// the 5 s interactive default.
     pub fn timeout(&self) -> Duration {
         Duration::from_millis(u64::from(self.timeout_ms))
+    }
+
+    /// Executes intent collection, daemon calls and final approval requests, when selected.
+    ///
+    /// # Errors
+    /// Returns redacted input, transport, candidate validation, terminal or output failures.
+    pub fn run_intent(&self, socket: &Path) -> Option<Result<u8, IntentFailure>> {
+        self.command.run_intent(socket, self.timeout())
     }
 
     /// Executes paged observability queries or an interactive review, when selected.
@@ -336,6 +346,10 @@ pub enum InputError {
     /// transport loop, not the single-request path.
     #[error("events requests are resolved through the events transport loop")]
     EventsBatch,
+    /// The intent command collects inputs and handles interaction through
+    /// [`Cli::run_intent`], not the single-request path.
+    #[error("intent proposals are resolved through run_intent")]
+    IntentProposal,
     /// A scan-prompt input failure; that command owns its variants and
     /// wording, mirroring V1's scan-specific messages.
     #[error(transparent)]
@@ -362,7 +376,8 @@ impl InputError {
             | Self::Json(_)
             | Self::LocalCommand
             | Self::PromptScanBatch
-            | Self::EventsBatch => false,
+            | Self::EventsBatch
+            | Self::IntentProposal => false,
         }
     }
 }
@@ -410,6 +425,58 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn intent_task_is_data_and_timeout_is_command_specific() {
+        for literal in ["--socket", "--timeout-ms", "--socket=/literal"] {
+            let cli = Cli::parse_from_with_socket_env(
+                [
+                    "agent-sec-cli",
+                    "--socket",
+                    "/run/test.sock",
+                    "intent",
+                    "propose",
+                    "--task",
+                    literal,
+                ],
+                None,
+            )
+            .unwrap();
+            assert_eq!(cli.timeout(), Duration::from_secs(45));
+            assert!(matches!(cli.request(), Err(InputError::IntentProposal)));
+        }
+        for ttl in ["0", "1801"] {
+            assert!(
+                Cli::parse_from_with_socket_env(
+                    [
+                        "agent-sec-cli",
+                        "intent",
+                        "propose",
+                        "--task",
+                        "read",
+                        "--ttl",
+                        ttl
+                    ],
+                    None
+                )
+                .is_err()
+            );
+        }
+        let cli = Cli::parse_from_with_socket_env(
+            [
+                "agent-sec-cli",
+                "intent",
+                "propose",
+                "--task",
+                "read",
+                "--timeout-ms",
+                "1",
+            ],
+            None,
+        )
+        .unwrap();
+        assert_eq!(cli.timeout(), Duration::from_millis(1));
     }
 
     #[test]

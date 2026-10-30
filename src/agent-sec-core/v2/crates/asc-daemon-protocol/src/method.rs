@@ -37,6 +37,9 @@ pub const OBS_RECORD: &str = "obs.record";
 /// Check daemon responsiveness and process uptime.
 pub const DAEMON_HEALTH: &str = "daemon.health";
 
+/// Propose an initial task candidate without granting approval.
+pub const INTENT_PROPOSE: &str = "intent.propose";
+
 /// Scan one Bash or Python snippet for pre-execution security issues.
 pub const ACTION_CODE_SCAN: &str = "action.code_scan";
 /// Detect personal information and credentials without authorizing an operation.
@@ -196,6 +199,8 @@ pub enum QueryMethod {
 /// Closed daemon method identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MethodId {
+    /// Local-peer proposals over submitted materials, without authorization or publication.
+    IntentPropose,
     /// Process health for any authenticated local peer.
     Health,
     /// Read-only owner-authorized observability query.
@@ -244,6 +249,7 @@ impl MethodId {
             // handler, derived from the transport-authenticated principal
             // rather than from the request.
             Self::Health
+            | Self::IntentPropose
             | Self::Action(_)
             | Self::ObservabilityRecord
             | Self::Query(_)
@@ -258,6 +264,7 @@ impl MethodId {
 pub fn resolve(method: &str) -> Option<MethodId> {
     match method {
         DAEMON_HEALTH => Some(MethodId::Health),
+        INTENT_PROPOSE => Some(MethodId::IntentPropose),
         POLICY_TEMPLATES_CREATE => Some(MethodId::Pap(PapMethod::Policy(PolicyMethod::Create))),
         POLICY_TEMPLATES_UPDATE => Some(MethodId::Pap(PapMethod::Policy(PolicyMethod::Update))),
         POLICY_TEMPLATES_GET => Some(MethodId::Pap(PapMethod::Policy(PolicyMethod::Get))),

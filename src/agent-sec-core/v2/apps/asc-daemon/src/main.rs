@@ -264,7 +264,8 @@ async fn run(
         .with_observability(asc_daemon_core::ObservabilityService::new(Arc::new(
             sinks::ObservabilitySinkAdapter(Arc::clone(&durable_sinks.observability)),
         )))
-        .with_queries(queries);
+        .with_queries(queries)
+        .with_intent(asc_daemon::intent_from_environment());
     let dispatcher = Arc::new(asc_daemon::skillfs::SkillFsDispatcher::new(
         dispatcher,
         skillfs.clone(),

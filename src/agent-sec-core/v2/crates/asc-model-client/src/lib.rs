@@ -1,18 +1,23 @@
-//! Shared HTTP client for local model inference backends.
+//! Model service transports shared by security capabilities and task extraction.
 //!
-//! Only Ollama is supported today.  Configuration is read from the same
-//! environment variables the rest of the toolchain uses:
+//! [`ModelClient`] keeps security scans on a local Ollama service. The independent
+//! [`provider`] module offers explicit OpenAI-compatible cloud requests and offline
+//! replay without changing that local configuration or interpreting task semantics.
+//!
+//! Local Ollama configuration uses `AGENT_SEC_MODEL_SERVICE_*`:
 //!
 //! - `AGENT_SEC_MODEL_SERVICE_BACKEND` (default `ollama`)
 //! - `AGENT_SEC_MODEL_SERVICE_BASE_URL` (default `http://localhost:11434`)
 //! - `AGENT_SEC_MODEL_SERVICE_TIMEOUT` seconds (default `30`, max `300`)
 //!
-//! The model service must be local: a non-loopback `base_url` is refused.
+//! [`ModelClient`] rejects non-loopback base URLs.
 //! Scanned prompts can carry credentials and PII, and the URL comes from the
 //! environment, so anything but loopback is treated as exfiltration.
 //!
 //! Consumers (asc-capability-prompt-scan, future code/pii scanners) inject a
 //! [`ModelClient`] so their transport stays decoupled from this crate.
+
+pub mod provider;
 
 use std::time::Duration;
 

@@ -9,6 +9,7 @@
 pub mod authoring;
 pub mod binding;
 pub mod error;
+pub mod filesystem;
 pub mod identifiers;
 pub mod policy;
 pub mod process_discovery;

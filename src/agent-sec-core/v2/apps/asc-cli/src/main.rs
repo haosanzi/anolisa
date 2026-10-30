@@ -106,6 +106,10 @@ fn main() -> ExitCode {
             eprintln!("{error}");
             ExitCode::FAILURE
         }
+        Err(RunError::Intent(error)) => {
+            eprintln!("agent-sec-cli: {error}");
+            ExitCode::from(error.exit_code())
+        }
         Err(error) => {
             eprintln!("agent-sec-cli: {error}");
             ExitCode::FAILURE
@@ -136,6 +140,13 @@ fn run(cli: &Cli) -> Result<u8, RunError> {
         }
         Plan::Daemon { socket } => socket,
     };
+    run_daemon(cli, socket)
+}
+
+fn run_daemon(cli: &Cli, socket: &std::path::Path) -> Result<u8, RunError> {
+    if let Some(result) = cli.run_intent(socket) {
+        return result.map_err(RunError::Intent);
+    }
     if let Some(result) = cli.run_observability_query(socket) {
         return result.map_err(RunError::Output);
     }
@@ -229,6 +240,8 @@ fn run(cli: &Cli) -> Result<u8, RunError> {
 
 #[derive(Debug, thiserror::Error)]
 enum RunError {
+    #[error(transparent)]
+    Intent(#[from] asc_cli::IntentFailure),
     #[error(transparent)]
     Input(#[from] InputError),
     #[error(transparent)]

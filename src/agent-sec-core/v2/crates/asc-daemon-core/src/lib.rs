@@ -6,6 +6,7 @@ mod observability;
 pub use observability::{ObservabilityService, ObservabilitySink, ObservabilityWriteError};
 mod action;
 mod identity;
+pub mod intent;
 pub use action::ActionService;
 mod pap;
 pub mod scope_discovery;
