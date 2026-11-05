@@ -127,14 +127,10 @@ fn run(cli: &Cli) -> Result<u8, RunError> {
                 )
                 .map_err(RunError::Output);
         }
-        Plan::ObservabilitySchema => {
-            use std::io::Write;
-            let schema = asc_observability::observability_record_json_schema();
-            let text = serde_json::to_string_pretty(&schema)
-                .map_err(|error| RunError::Output(io::Error::other(error)))?;
-            writeln!(io::stdout().lock(), "{text}").map_err(RunError::Output)?;
-            return Ok(0);
-        }
+        // The baseline is embedded in this binary, so printing it needs neither
+        // a daemon nor any host state.
+        Plan::PolicyDefault(command) => return render_policy_default(command),
+        Plan::ObservabilitySchema => return render_observability_schema(),
         Plan::Daemon { socket } => socket,
     };
     if let Some(result) = cli.run_observability_query(socket) {
@@ -226,6 +222,26 @@ fn run(cli: &Cli) -> Result<u8, RunError> {
         render_policy(&response, &mut io::stdout().lock(), &mut io::stderr())
             .map_err(RunError::Output)
     }
+}
+
+/// Prints the default policy embedded in this binary, which needs neither a
+/// daemon nor any host state.
+fn render_policy_default(command: &asc_cli::DefaultPolicy) -> Result<u8, RunError> {
+    command
+        .render(&mut io::stdout().lock())
+        .map_err(RunError::Output)?;
+    Ok(0)
+}
+
+/// Prints the observability record schema from this binary.
+fn render_observability_schema() -> Result<u8, RunError> {
+    use std::io::Write;
+
+    let schema = asc_observability::observability_record_json_schema();
+    let text = serde_json::to_string_pretty(&schema)
+        .map_err(|error| RunError::Output(io::Error::other(error)))?;
+    writeln!(io::stdout().lock(), "{text}").map_err(RunError::Output)?;
+    Ok(0)
 }
 
 #[derive(Debug, thiserror::Error)]
