@@ -1,0 +1,22 @@
+[package]
+name = "asc-policy-os-permission"
+description = "Projects one approved Cedar policy set onto the OS permission set a sandbox backend accepts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+asc-os-permission-types = { workspace = true }
+cedar-policy = { workspace = true }
+cedar-policy-core = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

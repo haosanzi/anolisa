@@ -36,6 +36,7 @@ members = [
     "crates/asc-pep-runtime",
     "crates/asc-pdp-runtime",
     "crates/asc-policy-cedar",
+    "crates/asc-policy-os-permission",
     "crates/asc-pap",
     "crates/asc-pcp",
     "crates/asc-policy-runtime",
@@ -96,6 +97,7 @@ asc-pep-runtime = { path = "crates/asc-pep-runtime" }
 asc-pdp-runtime = { path = "crates/asc-pdp-runtime" }
 linux-sandbox = { path = "../linux-sandbox" }
 asc-policy-cedar = { path = "crates/asc-policy-cedar" }
+asc-policy-os-permission = { path = "crates/asc-policy-os-permission" }
 asc-policy-target-contracts = { path = "crates/asc-policy-target-contracts" }
 asc-policy-repository = { path = "crates/asc-policy-repository" }
 asc-os-permission-types = { path = "crates/asc-os-permission-types" }

@@ -129,12 +129,11 @@ impl Cli {
             // A local command must stay usable on hosts that never deploy a
             // daemon, so an absent or malformed endpoint is not an error here.
             Some(_) => None,
+            // Sandbox commands resolve the endpoint too: `sandbox run` keeps working without a
+            // deployment, but the authorization mode needs the same value without a second
+            // invocation format.
             None if arguments.command.is_observability_schema()
-                || arguments.command.policy_default().is_some()
-                || arguments
-                    .command
-                    .sandbox()
-                    .is_some_and(|command| !command.requires_daemon()) =>
+                || arguments.command.policy_default().is_some() =>
             {
                 None
             }
@@ -373,6 +372,9 @@ pub enum InputError {
     /// Invalid authoring JSON or request serialization.
     #[error("invalid Policy request input: {0}")]
     Json(#[from] serde_json::Error),
+    /// Policy template file is neither an envelope nor UTF-8 Cedar text.
+    #[error("Policy template must be a JSON envelope or valid UTF-8 Cedar text")]
+    TemplateUtf8,
     /// A locally rendered command was asked for a daemon request.
     #[error("this command is rendered locally and sends no daemon request")]
     LocalCommand,
@@ -415,6 +417,7 @@ impl InputError {
             | Self::Read(_)
             | Self::TooLarge
             | Self::Json(_)
+            | Self::TemplateUtf8
             | Self::LocalCommand
             | Self::PromptScanBatch
             | Self::EventsBatch
@@ -429,7 +432,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sandbox_never_resolves_a_daemon_and_preserves_target_options() {
+    fn sandbox_resolves_the_daemon_and_preserves_target_options() {
         let cli = Cli::parse_from_with_socket_env(
             [
                 "agent-sec-cli",
@@ -452,7 +455,9 @@ mod tests {
             Some(OsStr::new("relative")),
         )
         .unwrap();
-        assert!(cli.socket().is_none());
+        // The authorization mode asks the daemon PDP, so the endpoint is resolved like any other
+        // daemon command, while the target keeps every option after `--` verbatim.
+        assert_eq!(cli.socket(), Some(std::path::Path::new("/unused")));
         assert!(matches!(cli.request(), Err(InputError::LocalCommand)));
         let Plan::Sandbox(sandbox::SandboxCommand::Run(command)) = cli.plan() else {
             panic!("local sandbox plan");
@@ -473,11 +478,11 @@ mod tests {
     }
 
     #[test]
-    fn sandbox_requires_permissions_and_an_explicit_command_boundary() {
+    fn sandbox_requires_a_source_and_an_explicit_command_boundary() {
         for args in [
             vec!["agent-sec-cli", "sandbox", "run", "--", "true"],
-            vec!["agent-sec-cli", "sandbox", "run", "--permissions", "p.json"],
             vec![
+                // A command without the `--` boundary would be read as an option.
                 "agent-sec-cli",
                 "sandbox",
                 "run",

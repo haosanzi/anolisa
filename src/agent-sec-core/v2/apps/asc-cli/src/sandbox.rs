@@ -1,11 +1,21 @@
-//! Direct permission-based execution and the internal Cosh authorization handoff.
+//! Policy-driven sandbox execution, PDP-authorized execution and the internal Cosh
+//! authorization handoff.
 
 use std::collections::BTreeMap;
+use std::fs;
 use std::io::Read as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-use asc_os_permission_types::OsPermissionSet;
-use clap::{Args, Subcommand};
+use asc_daemon_protocol::authorization::{
+    AgentPrincipal, AuthorizationRequest, Decision, ExecutionReceipt, ExecutionResult, LaunchSpec,
+    OsPermissionSet, ReceiptAck,
+};
+use asc_pep_runtime::{
+    ApprovalHandler, AuthorizationClient, DaemonAuthorizationClient, FixedPermissions, PepError,
+    PepRuntime, SandboxBackend, prepare_launch,
+};
+use clap::{ArgGroup, Args, Subcommand};
 
 pub mod hook;
 
@@ -14,38 +24,48 @@ const MAX_PERMISSION_BYTES: u64 = 4 * 1024 * 1024;
 /// Sandbox execution entry points.
 #[derive(Debug, Subcommand)]
 pub enum SandboxCommand {
-    /// Run a command with explicitly supplied OS permissions.
+    /// Run a command inside the sandbox the policy authorizes.
     Run(SandboxRun),
     /// Internal Cosh authorization and execution handoff.
     #[command(subcommand, hide = true)]
     Hook(hook::HookCommand),
 }
 
-/// Inputs to one direct sandbox launch.
+/// Inputs to one sandbox launch.
+///
+/// The caller names the policy; deriving the OS permission set from it is an internal step.
 #[derive(Debug, Args)]
+#[command(group(ArgGroup::new("source").required(true).args(["policy", "permissions"])))]
 pub struct SandboxRun {
-    /// JSON file containing an OS permission set.
+    /// Cedar policy file; the same text `policy create` publishes.
     #[arg(long)]
-    pub permissions: PathBuf,
-    /// Target executable and arguments, following `--`.
-    #[arg(last = true, required = true, num_args = 1..)]
+    pub policy: Option<PathBuf>,
+    /// Raw OS permission set, bypassing the policy projection.
+    #[arg(long)]
+    pub permissions: Option<PathBuf>,
+    /// Print the projected OS permission set and launch nothing.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Logical agent identity; together with `--agent-type` it authorizes through the daemon PDP.
+    #[arg(long, requires = "agent_type")]
+    pub agent_id: Option<String>,
+    /// Agent family reported to the PDP, such as cosh.
+    #[arg(long, requires = "agent_id")]
+    pub agent_type: Option<String>,
+    /// Ask for local approval when the PDP returns `STEP_UP`.
+    #[arg(long)]
+    pub ask: bool,
+    /// Target executable and arguments, following `--`; optional only for `--dry-run`.
+    #[arg(last = true, num_args = 1..)]
     pub command: Vec<String>,
 }
 
 impl SandboxCommand {
-    /// Only the explicit host integration uses the daemon.
-    pub const fn requires_daemon(&self) -> bool {
-        matches!(self, Self::Hook(_))
-    }
     /// Installs the supplied restrictions and returns the target's exit status.
     ///
     /// # Errors
     /// Rejects malformed permissions, unsupported restrictions and launch failures.
-    pub fn run(
-        &self,
-        socket: Option<&std::path::Path>,
-        timeout: std::time::Duration,
-    ) -> Result<u8, SandboxError> {
+    pub fn run(&self, socket: Option<&Path>, timeout: Duration) -> Result<u8, SandboxError> {
         let options = match self {
             Self::Run(options) => options,
             Self::Hook(command) => {
@@ -57,19 +77,146 @@ impl SandboxCommand {
                 );
             }
         };
-        let permissions = read_permissions(&options.permissions)?;
+        let permissions = options.requested()?;
+        if options.dry_run {
+            println!("{}", serde_json::to_string_pretty(&permissions)?);
+            return Ok(0);
+        }
         let (program, args) = options
             .command
             .split_first()
             .ok_or(SandboxError::MissingCommand)?;
-        let launch = asc_pep_runtime::prepare_launch(
+        let launch = prepare_launch(
             program,
             args.to_vec(),
             &std::env::current_dir()?,
             target_environment()?,
         )?;
-        let result = asc_pep_runtime::execute(launch, permissions)?;
+        let result = match (&options.agent_id, &options.agent_type) {
+            (Some(agent_id), Some(agent_type)) => authorized(
+                socket.ok_or_else(|| {
+                    SandboxError::Execution("authorization socket missing".into())
+                })?,
+                timeout,
+                &AgentPrincipal {
+                    agent_id: agent_id.clone(),
+                    agent_type: agent_type.clone(),
+                },
+                launch,
+                permissions,
+                options.ask,
+            )?,
+            _ => asc_pep_runtime::execute(launch, permissions)?,
+        };
         exit_status(result)
+    }
+}
+
+impl SandboxRun {
+    /// Requests exactly what the named policy grants; the PDP narrows it further.
+    fn requested(&self) -> Result<OsPermissionSet, SandboxError> {
+        let Some(path) = &self.policy else {
+            return match self.permissions.as_deref() {
+                Some(path) => read_permissions(path),
+                None => Err(SandboxError::MissingPermissions),
+            };
+        };
+        let text = fs::read_to_string(path)?;
+        let profile = asc_policy_os_permission::project(&text)
+            .map_err(|error| SandboxError::Projection(error.to_string()))?;
+        report(&profile);
+        Ok(profile.permissions)
+    }
+}
+
+/// Prints what the projection recovered before the launch decides anything.
+fn report(profile: &asc_policy_os_permission::SandboxProfile) {
+    for warning in &profile.report.warnings {
+        eprintln!("POLICY_WARNING {warning}");
+    }
+    for statement in &profile.report.unprojected {
+        eprintln!("POLICY_UNPROJECTED {statement}");
+    }
+    if !profile.report.launch_permitted {
+        eprintln!(
+            "POLICY_NO_LAUNCH_GRANT the policy permits neither process.spawn nor file.exec, so every launch is denied"
+        );
+    }
+}
+
+/// Evaluates the request through the daemon PDP and executes only the narrowed result.
+fn authorized(
+    socket: &std::path::Path,
+    timeout: std::time::Duration,
+    principal: &AgentPrincipal,
+    launch: LaunchSpec,
+    permissions: OsPermissionSet,
+    ask: bool,
+) -> Result<ExecutionResult, SandboxError> {
+    let mut runtime = PepRuntime::new(SandboxBackend::installed()?);
+    let client = ReportingClient(DaemonAuthorizationClient {
+        socket: socket.to_path_buf(),
+        timeout,
+    });
+    let mut approval = TerminalApproval;
+    let channel: Option<&mut dyn ApprovalHandler> = ask.then_some(&mut approval);
+    let outcome = runtime.run(
+        principal,
+        launch,
+        &FixedPermissions(permissions),
+        &client,
+        channel,
+    )?;
+    // The decision is the enforcement evidence; the target keeps stdout and stderr.
+    eprintln!(
+        "PEP_DECISION {}",
+        serde_json::json!({
+            "decision_id": outcome.decision.decision_id,
+            "policy_version": outcome.decision.policy_version,
+            "verdict": outcome.decision.verdict,
+            "warnings": outcome.decision.warnings,
+            "receipt_error": outcome.receipt_error,
+        })
+    );
+    Ok(outcome.result)
+}
+
+/// Forwards policy warnings to stderr without altering the decision.
+struct ReportingClient(DaemonAuthorizationClient);
+
+impl AuthorizationClient for ReportingClient {
+    fn evaluate(&self, request: &AuthorizationRequest) -> Result<Decision, PepError> {
+        let decision = self.0.evaluate(request)?;
+        for warning in &decision.warnings {
+            eprintln!("POLICY_WARNING {warning}");
+        }
+        Ok(decision)
+    }
+
+    fn report(&self, receipt: &ExecutionReceipt) -> Result<ReceiptAck, PepError> {
+        self.0.report(receipt)
+    }
+}
+
+/// Prompts on the terminal when the PDP requires step-up approval.
+struct TerminalApproval;
+
+impl ApprovalHandler for TerminalApproval {
+    fn ask(&mut self, decision: &Decision) -> Result<bool, PepError> {
+        use std::io::Write as _;
+
+        eprintln!(
+            "APPROVAL_REQUIRED {} {:?}",
+            decision.launch.program, decision.launch.args
+        );
+        eprint!("Allow this invocation? [y/N] ");
+        std::io::stderr().flush()?;
+        let mut answer = String::new();
+        std::io::stdin().read_line(&mut answer)?;
+        Ok(matches!(
+            answer.trim().to_ascii_lowercase().as_str(),
+            "y" | "yes"
+        ))
     }
 }
 
@@ -107,7 +254,7 @@ fn exit_status(
         .ok_or_else(|| SandboxError::Execution("target did not return an exit status".into()))
 }
 
-fn read_permissions(path: &std::path::Path) -> Result<OsPermissionSet, SandboxError> {
+pub(crate) fn read_permissions(path: &std::path::Path) -> Result<OsPermissionSet, SandboxError> {
     let mut bytes = Vec::new();
     std::fs::File::open(path)?
         .take(MAX_PERMISSION_BYTES + 1)
@@ -142,4 +289,10 @@ pub enum SandboxError {
     /// The backend reported a failed installation or launch.
     #[error("sandbox execution failed: {0}")]
     Execution(String),
+    /// The policy cannot be turned into the OS permission contract.
+    #[error("policy projection failed: {0}")]
+    Projection(String),
+    /// No policy or permission set was supplied.
+    #[error("sandbox run requires --policy or --permissions")]
+    MissingPermissions,
 }

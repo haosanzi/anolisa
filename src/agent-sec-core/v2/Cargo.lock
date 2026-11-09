@@ -249,6 +249,7 @@ dependencies = [
  "asc-pep-runtime",
  "asc-persistence-sqlite",
  "asc-policy-cedar",
+ "asc-policy-os-permission",
  "asc-policy-repository-sqlite",
  "asc-policy-types",
  "asc-security-events",
@@ -639,6 +640,18 @@ dependencies = [
  "asc-policy-types",
  "cedar-policy",
  "miette",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "asc-policy-os-permission"
+version = "1.2.0"
+dependencies = [
+ "asc-os-permission-types",
+ "cedar-policy",
+ "cedar-policy-core",
  "serde",
  "serde_json",
  "thiserror",

@@ -11,6 +11,7 @@ use asc_daemon_protocol::method::{
 use asc_daemon_protocol::{CreatePolicyParams, DaemonRequest, RevisionParams, UpdatePolicyParams};
 use asc_foundation_types::{ResourceId, Revision};
 use asc_policy_types::authoring::{PolicySource, source_serde};
+use asc_policy_types::cedar::CedarPolicySource;
 use clap::{Args, Subcommand};
 
 use super::common::{Page, encode, resource_id, revision};
@@ -50,7 +51,7 @@ pub(crate) struct PolicyInput {
     /// Complete Policy name.
     #[arg(long)]
     name: String,
-    /// JSON native template or Cedar source envelope, resolved in the CLI's working directory.
+    /// JSON template envelope or raw Cedar source, resolved in the CLI's working directory.
     #[arg(long)]
     file: PathBuf,
 }
@@ -121,6 +122,10 @@ impl PolicyCommand {
 }
 
 impl PolicyInput {
+    /// Decodes the authored template.
+    ///
+    /// A JSON object is the typed envelope. Anything else is Cedar text, which `intent propose
+    /// --format cedar` writes directly, so a reviewer never hand-assembles the envelope.
     fn template(&self) -> Result<PolicySource, InputError> {
         let mut bytes = Vec::new();
         File::open(&self.file)?
@@ -129,9 +134,16 @@ impl PolicyInput {
         if bytes.len() > asc_daemon_client::MAX_FRAME_BYTES {
             return Err(InputError::TooLarge);
         }
-        // Decode the typed template before conversion to Value, so duplicate
-        // fields cannot be silently collapsed by an untyped JSON map.
-        Ok(source_serde::from_slice(&bytes)?)
+        if bytes.iter().find(|byte| !byte.is_ascii_whitespace()) == Some(&b'{') {
+            // Decode the typed template before conversion to Value, so duplicate
+            // fields cannot be silently collapsed by an untyped JSON map.
+            return Ok(source_serde::from_slice(&bytes)?);
+        }
+        let text = String::from_utf8(bytes).map_err(|_| InputError::TemplateUtf8)?;
+        Ok(PolicySource::Cedar(CedarPolicySource {
+            schema: asc_policy_cedar::schema::embedded_reference(),
+            text,
+        }))
     }
 }
 
@@ -143,6 +155,29 @@ mod tests {
     use super::*;
     use crate::Cli;
     use crate::commands::Command;
+
+    #[test]
+    fn raw_cedar_is_wrapped_in_the_embedded_schema_envelope() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let file = directory.path().join("policy.cedar");
+        std::fs::write(
+            &file,
+            "// CANDIDATE: not approved; not effective.\npermit(principal, action, resource);\n",
+        )
+        .expect("policy file");
+        let input = PolicyInput {
+            name: "intent-task".into(),
+            file,
+        };
+        let PolicySource::Cedar(source) = input.template().expect("raw Cedar decodes") else {
+            panic!("raw Cedar must stay Cedar");
+        };
+        assert!(source.text.starts_with("// CANDIDATE"));
+        assert_eq!(
+            source.schema,
+            asc_policy_cedar::schema::embedded_reference()
+        );
+    }
 
     #[test]
     fn default_policy_prints_without_a_daemon() {
