@@ -94,12 +94,11 @@ fn inspect(
                 "resource may only appear in exact or directory-prefix path predicates",
             ));
         }
-        ExprKind::Var(Var::Context) => {
-            return Err(unsupported(
-                policy,
-                "runtime file-operation context cannot be fixed at sandbox launch",
-            ));
-        }
+        // Runtime facts (launch program, cwd, write operation) are bound per request, not at
+        // launch, so they cannot define an extra region. Ignoring them only skips probing; the
+        // requested permission set still bounds every evaluated path, and each region keeps its
+        // own context-sensitive verdict.
+        ExprKind::Var(Var::Context) => return Ok(()),
         _ => {}
     }
     // Process each immediate child once; subexpressions() includes the root.

@@ -479,16 +479,42 @@ when { context.input.args.contains({index: 0, value: "safe.py"}) };
 }
 
 #[test]
-fn runtime_file_conditions_and_arbitrary_globs_are_not_projected() {
-    for condition in [
-        "context.input.program == \"/usr/bin/python3\"",
-        "resource.path like \"/work/sec*\"",
-    ] {
-        let text = format!(
-            "forbid(principal, action == SecCore::Action::\"file.read\", resource) when {{ {condition} }};"
-        );
-        assert!(PdpRuntime::from_snapshot(snapshot(&text)).is_err());
-    }
+fn runtime_context_conditions_stay_per_request_and_globs_stay_rejected() {
+    // An arbitrary glob still cannot become a launch-time OS permission.
+    assert!(
+        PdpRuntime::from_snapshot(snapshot(
+            r#"forbid(principal, action == SecCore::Action::"file.read", resource)
+when { resource.path like "/work/sec*" };"#
+        ))
+        .is_err()
+    );
+    // A runtime context predicate contributes no launch region, yet it still filters every path
+    // that the requested permission set already bounds.
+    let runtime = PdpRuntime::from_snapshot(snapshot(
+        r#"
+forbid(principal, action == SecCore::Action::"file.write", resource)
+when {
+    context.input.operation == SecCore::WriteOperation::"write" &&
+    resource.path == "/work/secret"
+};
+"#,
+    ))
+    .unwrap();
+    let decision = runtime.evaluate(&request(), 100).unwrap();
+    assert_eq!(
+        decision.verdict,
+        DecisionVerdict::Modify,
+        "{}",
+        decision.reason
+    );
+    let effective = decision.effective_permissions.unwrap();
+    assert!(
+        effective
+            .filesystem
+            .rules
+            .iter()
+            .any(|rule| { rule.effect == RuleEffect::Deny && rule.path == "/work/secret" })
+    );
 }
 
 #[test]
