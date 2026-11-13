@@ -112,7 +112,9 @@ The current crates are:
   target plans. Native JSON supports block + file/write + operation=delete without
   history and produces DSL; Cedar supports a bounded `forbid` subset for deletion
   and ordinary writes plus exact-file read denial, producing structured file-protection JSON. Unsupported
-  rules reject the entire translation. Backend validation occurs at deployment.
+  forbids reject the entire translation. Validated Cedar permits are skipped;
+  permit-only input is rejected as an empty effective policy. Backend validation
+  occurs at deployment.
 - `asc-agentsight-client`: health-gated AgentSight apply/delete transport for
   one configured endpoint, with process identity resolution and complete HTTP
   fixtures. It does not depend on a reconciliation framework.
@@ -365,8 +367,10 @@ source decoder reads historical native Policy, Scope and Binding snapshots.
 Native serialization and SQLite storage version 1 are retained. Saved Cedar
 source can be passed to the existing `asc-policy-cedar::pst` entrypoint to
 regenerate the official PST under its saved schema. The PEP Translator supports
-Cedar `forbid` deletion/ordinary-write/exact-file read restrictions; unsupported semantics reject
-the entire translation. The Deployment Client checks capabilities and applies the plan.
+Cedar `forbid` deletion/ordinary-write/exact-file read restrictions and skips validated
+`permit` statements; unsupported forbids reject the entire translation. Successful
+deployment still reports `READY` for the projected plan, without partial-success
+status or skipped-rule diagnostics. The Deployment Client checks capabilities and applies the plan.
 
 The current bootstrap bounds frame read, application dispatch, rejection
 encoding, response write, connection drain, and final Tokio runtime shutdown.

@@ -25,15 +25,16 @@ pub(super) fn translate(
     let mut targets = Vec::new();
     for (index, policy) in policies.policies.values().enumerate() {
         let body = policy.body();
+        // This target adds explicit denials; validated grants remain authorization input.
+        if body.effect == Effect::Permit {
+            continue;
+        }
         let translated = (|| {
             if body.principal != PrincipalConstraint::Any {
                 return Err("UNSUPPORTED_PRINCIPAL_CONSTRAINT");
             }
             if !body.annotations.is_empty() {
                 return Err("UNSUPPORTED_ANNOTATION");
-            }
-            if body.effect != Effect::Forbid {
-                return Err("UNSUPPORTED_EFFECT");
             }
             let all_actions = |name: &str| {
                 let matches = |id: &cedar_policy::pst::EntityUID| {

@@ -77,6 +77,19 @@ fn cedar_file_protections_flow_through_pap_sqlite_reconciler_and_http() {
         }
     }
 
+    let mut mixed_source: Value = serde_json::from_str(include_str!(
+        "../../../fixtures/adapters/agentsight/cedar-file-protection/prevent-delete.json"
+    ))
+    .unwrap();
+    let forbid = mixed_source["content"]["text"].as_str().unwrap();
+    mixed_source["content"]["text"] = json!(format!(
+        r#"permit(principal, action == SecCore::Action::"file.write", resource)
+        when {{ resource.path == "/workspace" || resource.path like "/workspace/*" }};
+        permit(principal, action == SecCore::Action::"network.use", resource);
+        {forbid}"#
+    ));
+    let mixed_source = mixed_source.to_string();
+
     for (source, delete, write, read) in [
         (
             include_str!(
@@ -102,6 +115,7 @@ fn cedar_file_protections_flow_through_pap_sqlite_reconciler_and_http() {
             false,
             true,
         ),
+        (mixed_source.as_str(), true, false, false),
     ] {
         let repo = Arc::new(SqlitePolicyRepository::temporary().unwrap());
         let pap = PapService::new(repo.clone()).with_scope_discovery(Arc::new(Discovery));

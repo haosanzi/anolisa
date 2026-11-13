@@ -122,7 +122,9 @@ Cedar 的 `(principal, action, resource)` scope 因而不等同于 SecCore 的 S
 它不查询最新模板，不执行请求授权，也不进行部署 I/O。
 
 `TargetBindingPlan` 包含目标格式及不透明内容；具体格式、容量、路径匹配与效果支持范围
-由对应 Adapter 定义。合法但不受支持的语句使整个 Binding 翻译失败，不允许静默下发部分规则。
+由对应 Adapter 定义。合法但不受支持的约束使整个 Binding 翻译失败。目标可以声明投影规则：
+AgentSight 跳过已通过前端校验的 Cedar permit，执行支持的 forbid；不支持的 forbid 和
+空有效计划仍拒绝，不在该执行端实现 Cedar 的默认拒绝授权。
 
 例如，以下原生策略描述对指定文件的删除限制：
 

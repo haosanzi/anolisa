@@ -37,10 +37,17 @@ preserving existing version-1 payloads. Read denial requires a target advertisin
 
 This target consumes **additional forbid constraints**. A matching rule blocks
 the covered operation; otherwise this policy adds no restriction. It does not
-execute Cedar Authorizer's default-deny algorithm. `permit` is rejected by this
-Translator, including in mixed sets; the common Cedar frontend still accepts it
-for other consumers. There is no implicit permit-all, permit-to-exclusion rewrite,
-or general Cedar authorization service in this path.
+execute Cedar Authorizer's default-deny algorithm. After common frontend
+validation, the Translator skips `permit` statements, including their validated
+principal conditions and annotations, and translates every remaining `forbid`.
+Permits remain in the saved source for authorization consumers; they neither
+override a forbid nor become exclusions. At least one effective protection target
+is required, so permit-only input returns `CEDAR_EMPTY_EFFECTIVE_POLICY`.
+
+This projection does not add a partial-success Binding state or skipped-rule
+diagnostics. A successfully deployed plan follows the existing `READY` lifecycle;
+that state confirms the projected protection plan, not enforcement of every Cedar
+statement or Cedar's default-deny behavior.
 
 ## 2. Supported fields and expressions
 
@@ -88,14 +95,14 @@ removal. These limits apply after SDK parsing, not to Cedar parser complexity.
 
 ## 3. Rejections and permitted semantic lowering
 
-The following are rejected: permit; unconstrained or mixed read/write actions;
+The following are rejected in `forbid` statements: unconstrained or mixed read/write actions;
 exec/network actions; directory-tree read denial; unrestricted file.write;
 create/rename/setattr; `context.input.program`,
 `mode`, `ownerUid`, `ownerGid`, `cwd`, `arg_count` and `args` conditions;
 resource identity/hierarchy conditions; arbitrary
 `like` patterns; unbounded complements; unsupported functions and expressions.
-Even an unsupported condition in a constant-false branch is rejected. AgentSight rejects
-principal constraints and references, and annotated policies. The shared frontend
+Even an unsupported forbid condition in a constant-false branch is rejected. AgentSight rejects
+forbids with principal constraints and references, or annotations. The shared frontend
 checks the schema revision, rejects templates and validates supported annotations.
 
 Only these fixed target semantics are accepted:
@@ -115,8 +122,9 @@ overlay/overlayfs topology is rejected by the backend. Final symlinks cannot be
 protected exact-file targets or directory roots; intermediate symlinks are subject
 to the backend resolver. The source schema alone does not prove these boundaries.
 
-No other semantic degradation is allowed. In particular, never discard a
-condition, unsupported operation, exclusion or statement; never widen a path to
+Beyond the declared permit projection, no semantic degradation is allowed. In
+particular, never discard a forbid condition, unsupported operation, exclusion or
+forbid statement; never widen a path to
 its parent; never enumerate today's glob matches as a persistent rule; never
 switch to legacy DSL or audit mode after a structured deployment failure. More
 blocking is also a semantic change outside the fixed boundaries above.
@@ -190,8 +198,9 @@ The shared flow is:
    revision; invalid syntax/schema does not create a revision.
 2. Scope pins the Policy revision. Discovery supplies the process identity and
    creates a Binding snapshot; existing assignments do not follow Policy updates.
-3. Reconciler invokes Translator. PST conditions become the structured target
-   plan, or the whole Binding translation is rejected.
+3. Reconciler invokes Translator. Validated permits are skipped; every forbid must
+   translate into the structured target plan or the whole translation is rejected.
+   An empty effective plan is also rejected.
 4. Client checks boot ID, PID namespace and process start time and prepares the
    exact HTTP bytes. The existing lifecycle registers the target before mutation.
 5. Preflight checks ready/ActPlane, static topology and the required exact-file
@@ -241,12 +250,14 @@ cargo test -p asc-policy-translator-agentsight -p asc-agentsight-client -p asc-p
 ```
 
 Translator tests compare supported path/operation conditions with Cedar decisions
-under an explicit permit baseline, and reject unsupported or oversized input.
+under an explicit permit baseline. They check that mixed permits preserve the
+forbid projection and that permit-only, invalid, unsupported or oversized input
+is rejected.
 Client tests check fixed version-1 JSON requests, rejection of unsupported payload
 versions and fields, exact-byte retry, capability failure before update cleanup,
 malformed artifacts and mismatched acknowledgements.
 The PCP test `cedar_file_protections_flow_through_pap_sqlite_reconciler_and_http`
-exercises deletion, write and read fixture policies through PAP, SQLite, instance admission, actual
+exercises deletion, write, read and mixed permit/forbid policies through PAP, SQLite, instance admission, actual
 Translator/Client/Ureq, HTTP receipt, Binding Ready and cleanup. Discovery and
 the remote PEP are controlled test doubles. This does not establish live kernel
 enforcement or full file integrity.

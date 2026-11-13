@@ -138,8 +138,10 @@ authorize a request or perform deployment I/O.
 
 `TargetBindingPlan` carries a target format and opaque content. Each Adapter
 defines its format, capacity, path matching and supported effects. A valid but
-unsupported statement rejects the entire Binding translation; no partial rule
-set may be silently deployed.
+unsupported constraint rejects the entire Binding translation. A target may
+declare a projection: AgentSight skips frontend-valid Cedar permits and enforces
+supported forbids. It rejects unsupported forbids and empty effective plans; it
+does not implement Cedar's default-deny authorization.
 
 For example, this native policy restricts deletion of a specific file:
 

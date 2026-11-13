@@ -29,9 +29,14 @@ Client 共用。该 crate 只依赖 `serde`，固定 JSON 样例用于检查序�
 禁读要求目标报告 `file_read_protection`；旧目标会在更新清理前被拒绝。
 
 此目标接收**附加 forbid 限制**：命中时阻止对应操作，未命中时本策略不增加限制。
-这里不执行 Cedar Authorizer 的默认拒绝算法。Translator 拒绝 permit，包括混合策略集中的
-permit；通用前端仍保留 permit 供其他消费者使用。不补隐含 permit-all，不把 permit 转成
-排除项，也不在此链路实现通用 Cedar 请求授权服务。
+这里不执行 Cedar Authorizer 的默认拒绝算法。通过通用前端校验后，Translator 跳过
+permit 语句，包括其中通过校验的主体条件和注解，并翻译剩余的每条 forbid。
+permit 仍保存在源码中供授权消费者使用，不覆盖 forbid，也不转换为排除项。
+至少需要一个有效防护目标，只有 permit 的输入返回 `CEDAR_EMPTY_EFFECTIVE_POLICY`。
+
+本次投影不新增 Binding 部分成功状态或跳过规则的诊断字段。防护计划下发成功后沿用
+现有 `READY` 生命周期；该状态确认的是投影后的防护计划，不代表执行了每条 Cedar
+语句或 Cedar 的默认拒绝语义。
 
 ## 2. 字段和表达式支持范围
 
@@ -70,11 +75,11 @@ permit；通用前端仍保留 permit 供其他消费者使用。不补隐含 pe
 
 ## 3. 拒绝规则与允许的语义降低
 
-以下输入被拒绝：permit；未限制 action 或混合读写 action；exec/network；目录树禁读；未限制 operation 的 file.write；
+以下 forbid 输入被拒绝：未限制 action 或混合读写 action；exec/network；目录树禁读；未限制 operation 的 file.write；
 create/rename/setattr；`context.input` 下的 `program`、`mode`、`ownerUid`、`ownerGid`、
 `cwd`、`arg_count`、`args` 条件；resource 身份或层级条件；
 任意 like 模式；无界补集；未支持的函数或表达式。常量 false 分支中的不支持条件也拒绝。
-AgentSight 拒绝带主体约束、主体引用或注解的策略。共享前端校验 schema 版本，拒绝模板槽位，并校验支持的注解。
+AgentSight 拒绝带主体约束、主体引用或注解的 forbid。共享前端校验 schema 版本，拒绝模板槽位，并校验支持的注解。
 
 本目标只接受以下固定的后端语义差异：
 
@@ -91,7 +96,7 @@ AgentSight 拒绝带主体约束、主体引用或注解的策略。共享前端
 的 overlay/overlayfs 拓扑。精确文件及目录根不能是末级符号链接；中间符号链接按后端
 解析器处理。schema 校验本身不证明这些运行时条件成立。
 
-除此之外不允许语义降级：不得丢弃条件、操作、排除项或语句；不得把路径扩大为父目录；
+除上述明确的 permit 投影外，不允许语义降级：不得丢弃 forbid 的条件、操作、排除项或语句；不得把路径扩大为父目录；
 不得把当前 glob 匹配文件枚举成长期规则；不得在失败后回退旧 DSL 或 audit 模式。
 多拦截也属于语义变化，不能作为上述固定契约之外的默认处理。
 
@@ -158,7 +163,7 @@ Apply 期间须保持目标访问及进程树稳定；并发下发、io_uring/AI
 
 1. CLI/RPC 提交源码封装；PAP 校验后保存 Policy revision，语法或 schema 不合法不会生成新版本。
 2. Scope 固定引用 Policy revision；发现进程实例后生成 Binding 快照。更新 Policy 不隐式更新已有绑定。
-3. Reconciler 调用 Translator，将 PST 条件转为结构化计划；任意不支持内容使整个 Binding 翻译失败。
+3. Reconciler 调用 Translator，跳过已通过前端校验的 permit，将每条 forbid 转为结构化计划；任意不支持的 forbid 或空有效计划使整个翻译失败。
 4. Client 检查 boot ID、PID namespace、进程 start time，准备准确 HTTP 字节；既有生命周期在修改目标前登记目标身份。
 5. Preflight 检查 ready/ActPlane、静态拓扑及所需的精确文件删除、目录树删除、普通写和／或 `file_read_protection` 能力。缺少字段视为无能力，在清理旧目标和 POST 前拒绝。POST 前再次检查身份，回执必须匹配请求且为带 domain 的 enforced 状态，才确认 Present。
 6. Sight 校验目标存在性、类型、拓扑及实际容量并安装保护；删除 Scope 时使用已保存的目标引用撤销。
@@ -196,9 +201,9 @@ cargo test -p asc-policy-translator-agentsight -p asc-agentsight-client -p asc-p
 ```
 
 Translator 测试在显式 permit 基线下，对照 Cedar 决策检查已支持的路径和操作条件，并覆盖
-不支持输入和超限拒绝。Client 测试检查固定 version 1 JSON 请求、未知 payload 版本和字段拒绝、
+混合 permit 不改变 forbid 投影，以及仅含 permit、无效输入、不支持输入和超限拒绝。Client 测试检查固定 version 1 JSON 请求、未知 payload 版本和字段拒绝、
 准确字节重试、更新清理前的能力拒绝、无效策略及回执不匹配。
-PCP 的 `cedar_file_protections_flow_through_pap_sqlite_reconciler_and_http` 对删除、写入和禁读 fixture
+PCP 的 `cedar_file_protections_flow_through_pap_sqlite_reconciler_and_http` 对删除、写入、禁读及 permit/forbid 混合策略
 覆盖 PAP、SQLite、实例准入、真实 Translator/Client/Ureq、HTTP 回执、Binding Ready 与撤销。
 实例发现和远端 PEP 使用受控替身；这些测试不证明真实内核防护或完整文件防篡改。
 

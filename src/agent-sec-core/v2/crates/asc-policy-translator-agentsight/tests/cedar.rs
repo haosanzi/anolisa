@@ -165,6 +165,94 @@ fn structured_output_matches_the_clients_v1_contract_fixture() {
 }
 
 #[test]
+fn permit_rules_do_not_change_the_forbid_projection() {
+    let forbids = format!(
+        "{}{}",
+        read_rule(r#"resource.path == "/secret""#),
+        rule(
+            r#"context.input.operation == SecCore::WriteOperation::"delete"
+            && (resource.path == "/workspace" || resource.path like "/workspace/*")"#
+        )
+    );
+    let expected = translate(&forbids);
+    let permits = [
+        r#"permit(principal, action == SecCore::Action::"file.read", resource)
+            when { resource.path == "/secret" };"#,
+        r#"permit(principal, action == SecCore::Action::"file.write", resource)
+            when { resource.path == "/workspace" || resource.path like "/workspace/*" };"#,
+        r#"permit(principal, action == SecCore::Action::"file.exec", resource)
+            when { resource.path == "/usr/bin/python3" };"#,
+        r#"permit(principal, action == SecCore::Action::"network.use", resource);"#,
+        r#"@id("tool-permit") @advice("{\"verdict\":\"escalate\"}")
+            permit(principal == SecCore::Subject::"worker",
+                action == SecCore::Action::"process.spawn", resource is SecCore::Process)
+            when { context.input.cwd == "/workspace"
+                && resource.resolved_program == "/usr/bin/python3" };"#,
+    ];
+    for permit in permits {
+        for source in [format!("{permit}{forbids}"), format!("{forbids}{permit}")] {
+            assert_eq!(translate(&source), expected, "{permit}");
+        }
+    }
+    assert_eq!(
+        translate(&format!("{}{forbids}", permits.join("\n"))),
+        expected
+    );
+}
+
+#[test]
+fn permit_only_policy_rejects_an_empty_effective_plan() {
+    let source = r#"permit(principal, action == SecCore::Action::"file.write", resource);"#;
+    let TranslationOutcome::Rejected(error) =
+        AgentSightTranslator.translate(&binding(source)).unwrap()
+    else {
+        panic!("permit-only policy must not produce an enforcement plan");
+    };
+    assert_eq!(error.code, "CEDAR_EMPTY_EFFECTIVE_POLICY");
+}
+
+#[test]
+fn skipped_permits_still_require_frontend_validation() {
+    let forbid = read_rule(r#"resource.path == "/secret""#);
+    for permit in [
+        r#"permit(principal, action == SecCore::Action::"unknown", resource);"#,
+        r#"@unknown("ignored") permit(principal, action == SecCore::Action::"file.read", resource);"#,
+    ] {
+        let TranslationOutcome::Rejected(error) = AgentSightTranslator
+            .translate(&binding(&format!("{permit}{forbid}")))
+            .unwrap()
+        else {
+            panic!("invalid permit must reject the whole source: {permit}");
+        };
+        assert_eq!(error.code, "INVALID_CEDAR_POLICY");
+    }
+}
+
+#[test]
+fn permits_do_not_hide_unsupported_forbids_or_change_diagnostic_positions() {
+    let permit = r#"permit(principal, action == SecCore::Action::"file.write", resource);"#;
+    let supported = read_rule(r#"resource.path == "/secret""#);
+    let unsupported = rule(
+        r#"context.input.operation == SecCore::WriteOperation::"delete"
+            && context.input.program == "/usr/bin/rm" && resource.path == "/workspace""#,
+    );
+    for (source, index) in [
+        (format!("{permit}{supported}{unsupported}"), 2),
+        (format!("{unsupported}{permit}{supported}"), 0),
+    ] {
+        let TranslationOutcome::Rejected(error) =
+            AgentSightTranslator.translate(&binding(&source)).unwrap()
+        else {
+            panic!("unsupported forbid must reject the whole source");
+        };
+        assert_eq!(
+            error.code,
+            format!("CEDAR_RULE_{index}_UNSUPPORTED_CONDITION")
+        );
+    }
+}
+
+#[test]
 fn unsupported_conditions_reject_the_whole_policy_including_later_statements() {
     let supported = rule(
         r#"context.input.operation == SecCore::WriteOperation::"delete" && resource.path == "/safe""#,
@@ -192,7 +280,6 @@ fn unsupported_conditions_reject_the_whole_policy_including_later_statements() {
     for text in [
         rule(r#"false && context.input.program == "/usr/bin/rm""#),
         rule("[].contains(context.input.program)"),
-        supported.replace("forbid", "permit"),
         supported.replace("resource is SecCore::File)", "resource == SecCore::File::\"a\")"),
         "forbid(principal, action == SecCore::Action::\"file.exec\", resource) when { resource.path == \"/a\" };".into(),
     ] {
@@ -201,23 +288,35 @@ fn unsupported_conditions_reject_the_whole_policy_including_later_statements() {
 }
 
 #[test]
-fn runtime_only_rules_reject_the_whole_agentsight_binding() {
+fn runtime_only_forbids_reject_the_whole_agentsight_binding() {
     let base = rule(
         r#"context.input.operation == SecCore::WriteOperation::"write" && resource.path == "/config""#,
     );
     for runtime_rule in [
-        base.replace("forbid(principal,", r#"forbid(principal == SecCore::Subject::"worker","#),
-        base.replace("when {", r#"when { principal == SecCore::Subject::"worker" &&"#),
+        base.replace(
+            "forbid(principal,",
+            r#"forbid(principal == SecCore::Subject::"worker","#,
+        ),
+        base.replace(
+            "when {",
+            r#"when { principal == SecCore::Subject::"worker" &&"#,
+        ),
         format!(r#"@id("protected") {base}"#),
-        r#"@advice("{\"verdict\":\"escalate\"}") permit(principal, action == SecCore::Action::"process.spawn", resource);"#.into(),
     ] {
         let combined = format!("{base}\n{runtime_rule}");
         let input = binding(&combined);
-        let asc_policy_types::authoring::PolicySource::Cedar(source) = &input.policy.template else {
+        let asc_policy_types::authoring::PolicySource::Cedar(source) = &input.policy.template
+        else {
             unreachable!()
         };
         asc_policy_cedar::validate(source).unwrap();
-        assert!(matches!(AgentSightTranslator.translate(&input).unwrap(), TranslationOutcome::Rejected(_)), "{runtime_rule}");
+        assert!(
+            matches!(
+                AgentSightTranslator.translate(&input).unwrap(),
+                TranslationOutcome::Rejected(_)
+            ),
+            "{runtime_rule}"
+        );
     }
 }
 
