@@ -142,8 +142,10 @@ $ sudo journalctl -u agentsight-enforcer
 切换 `agent-file-guard` 的前置条件、互斥能力、维护窗口及重新 Apply 步骤，见
 [启用系统层文件防误删](deployment.md#启用系统层文件防误删)。
 
-对于同一容器内的目标，`root_pid` 保持为 procfs 显示的 namespace-local PID。enforcer 独立解析
-并校验对应的内核身份，不会通过 `NSpid` 链换算或猜测宿主 PID。当本地 PID、PID namespace、
+`root_pid` 保持为 enforcer 的 procfs 所显示的 PID；目标运行在子 PID namespace 时，
+它可以是 Host PID。enforcer 校验 `NSpid` 链，用最后一项匹配任务迭代器中的 namespace-local PID。
+内核身份仍取自迭代器记录，并须匹配目标 namespace 和启动时间，不通过 `NSpid` 猜测。
+当 PID 映射、本地 PID、PID namespace、
 进程启动时间或 procfs 时钟无法校验时，包括 PID 已失效或被复用、container-uptime 时钟关系
 不一致，Apply 都会 fail-closed。启用 `agent-file-guard` profile 和 BPF-LSM 后，
 `file_delete_guard` 同样支持初始或容器默认 PID namespace。

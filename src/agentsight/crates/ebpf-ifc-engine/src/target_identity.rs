@@ -53,6 +53,10 @@ pub fn resolve_process_identity(
         ));
     }
     let namespace = fs::metadata(format!("/proc/{local_pid}/ns/pid"))?;
+    // The iterator reports the target's innermost PID, while procfs may expose
+    // its PID in an ancestor namespace (for example, Host -> linux-sandbox).
+    let status = fs::read(format!("/proc/{local_pid}/status"))?;
+    let namespace_pid = parse_namespace_pid(&String::from_utf8_lossy(&status), local_pid)?;
     let caller_namespace = fs::metadata("/proc/self/ns/pid")?;
     let proc_init_namespace = fs::metadata("/proc/1/ns/pid")?;
     if caller_namespace.dev() != proc_init_namespace.dev()
@@ -77,7 +81,7 @@ pub fn resolve_process_identity(
     )?;
     let kernel_pid = select_kernel_pid(
         &records,
-        local_pid,
+        namespace_pid,
         namespace.ino(),
         expected_start_time,
         boottime_offset.value,
@@ -87,6 +91,36 @@ pub fn resolve_process_identity(
     Ok(ProcessIdentity {
         kernel_pid,
         procfs_start_time_bias,
+    })
+}
+
+fn parse_namespace_pid(status: &str, procfs_pid: i32) -> io::Result<i32> {
+    let invalid = || {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "inconsistent procfs NSpid mapping",
+        )
+    };
+    let line = status
+        .lines()
+        .find_map(|line| line.strip_prefix("NSpid:"))
+        .ok_or_else(invalid)?;
+    let mut pids = line.split_whitespace();
+    let first: i32 = pids
+        .next()
+        .ok_or_else(invalid)?
+        .parse()
+        .map_err(|_| invalid())?;
+    if first != procfs_pid || first <= 0 {
+        return Err(invalid());
+    }
+    pids.try_fold(first, |_, value| {
+        let pid: i32 = value.parse().map_err(|_| invalid())?;
+        if pid <= 0 {
+            Err(invalid())
+        } else {
+            Ok(pid)
+        }
     })
 }
 
@@ -521,6 +555,40 @@ mod tests {
         let resolved =
             select_kernel_pid(&records, 17, 2000, 12, 0, 100, 0).expect("resolve target");
         assert_eq!(resolved, 4100);
+    }
+
+    #[test]
+    fn resolves_procfs_pid_in_an_ancestor_namespace() {
+        let pid = parse_namespace_pid("Name:\tqodercli\nNSpid:\t4100\t17\t2\n", 4100)
+            .expect("innermost PID from Host procfs");
+        let records = [record(4100, 2, 2000, 123_000_000)];
+        assert_eq!(
+            select_kernel_pid(&records, pid, 2000, 12, 0, 100, 0).expect("nested target"),
+            4100
+        );
+        assert_eq!(
+            parse_namespace_pid("NSpid:\t17\n", 17).expect("same namespace"),
+            17
+        );
+    }
+
+    #[test]
+    fn rejects_inconsistent_procfs_pid_mappings() {
+        for status in [
+            "",
+            "NSpid:\n",
+            "NSpid:\t18\t2\n",
+            "NSpid:\t17\t0\n",
+            "NSpid:\t17\t-2\n",
+            "NSpid:\t17\tbad\n",
+        ] {
+            assert_eq!(
+                parse_namespace_pid(status, 17)
+                    .expect_err("invalid mapping")
+                    .kind(),
+                io::ErrorKind::InvalidData
+            );
+        }
     }
 
     #[test]

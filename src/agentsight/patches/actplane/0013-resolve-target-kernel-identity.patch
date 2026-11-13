@@ -887,10 +887,10 @@ index 4397955eb60f319044a652073903fd2631e95e58..6e8c98460518cc4281db53802ccedb15
 +            "te_policy_permission_scratch",
 diff --git a/bpf/src/target_identity.rs b/bpf/src/target_identity.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..eeecb0dc648d85212edc0378a415d047a685d09e
+index 0000000000000000000000000000000000000000..63a3b030f82348da38ab9819531b7c654fadb6e0
 --- /dev/null
 +++ b/bpf/src/target_identity.rs
-@@ -0,0 +1,924 @@
+@@ -0,0 +1,992 @@
 +//! Resolves process identity through a task iterator when procfs hides outer PIDs.
 +
 +use std::fs;
@@ -946,6 +946,10 @@ index 0000000000000000000000000000000000000000..eeecb0dc648d85212edc0378a415d047
 +        ));
 +    }
 +    let namespace = fs::metadata(format!("/proc/{local_pid}/ns/pid"))?;
++    // The iterator reports the target's innermost PID, while procfs may expose
++    // its PID in an ancestor namespace (for example, Host -> linux-sandbox).
++    let status = fs::read(format!("/proc/{local_pid}/status"))?;
++    let namespace_pid = parse_namespace_pid(&String::from_utf8_lossy(&status), local_pid)?;
 +    let caller_namespace = fs::metadata("/proc/self/ns/pid")?;
 +    let proc_init_namespace = fs::metadata("/proc/1/ns/pid")?;
 +    if caller_namespace.dev() != proc_init_namespace.dev()
@@ -970,7 +974,7 @@ index 0000000000000000000000000000000000000000..eeecb0dc648d85212edc0378a415d047
 +    )?;
 +    let kernel_pid = select_kernel_pid(
 +        &records,
-+        local_pid,
++        namespace_pid,
 +        namespace.ino(),
 +        expected_start_time,
 +        boottime_offset.value,
@@ -980,6 +984,36 @@ index 0000000000000000000000000000000000000000..eeecb0dc648d85212edc0378a415d047
 +    Ok(ProcessIdentity {
 +        kernel_pid,
 +        procfs_start_time_bias,
++    })
++}
++
++fn parse_namespace_pid(status: &str, procfs_pid: i32) -> io::Result<i32> {
++    let invalid = || {
++        io::Error::new(
++            io::ErrorKind::InvalidData,
++            "inconsistent procfs NSpid mapping",
++        )
++    };
++    let line = status
++        .lines()
++        .find_map(|line| line.strip_prefix("NSpid:"))
++        .ok_or_else(invalid)?;
++    let mut pids = line.split_whitespace();
++    let first: i32 = pids
++        .next()
++        .ok_or_else(invalid)?
++        .parse()
++        .map_err(|_| invalid())?;
++    if first != procfs_pid || first <= 0 {
++        return Err(invalid());
++    }
++    pids.try_fold(first, |_, value| {
++        let pid: i32 = value.parse().map_err(|_| invalid())?;
++        if pid <= 0 {
++            Err(invalid())
++        } else {
++            Ok(pid)
++        }
 +    })
 +}
 +
@@ -1414,6 +1448,40 @@ index 0000000000000000000000000000000000000000..eeecb0dc648d85212edc0378a415d047
 +        let resolved =
 +            select_kernel_pid(&records, 17, 2000, 12, 0, 100, 0).expect("resolve target");
 +        assert_eq!(resolved, 4100);
++    }
++
++    #[test]
++    fn resolves_procfs_pid_in_an_ancestor_namespace() {
++        let pid = parse_namespace_pid("Name:\tqodercli\nNSpid:\t4100\t17\t2\n", 4100)
++            .expect("innermost PID from Host procfs");
++        let records = [record(4100, 2, 2000, 123_000_000)];
++        assert_eq!(
++            select_kernel_pid(&records, pid, 2000, 12, 0, 100, 0).expect("nested target"),
++            4100
++        );
++        assert_eq!(
++            parse_namespace_pid("NSpid:\t17\n", 17).expect("same namespace"),
++            17
++        );
++    }
++
++    #[test]
++    fn rejects_inconsistent_procfs_pid_mappings() {
++        for status in [
++            "",
++            "NSpid:\n",
++            "NSpid:\t18\t2\n",
++            "NSpid:\t17\t0\n",
++            "NSpid:\t17\t-2\n",
++            "NSpid:\t17\tbad\n",
++        ] {
++            assert_eq!(
++                parse_namespace_pid(status, 17)
++                    .expect_err("invalid mapping")
++                    .kind(),
++                io::ErrorKind::InvalidData
++            );
++        }
 +    }
 +
 +    #[test]

@@ -169,9 +169,11 @@ profile. Even when `ready=true`, check `capabilities.file_delete_guard`; the def
 [Enable system-level file deletion protection](deployment.md#enable-system-level-file-deletion-protection)
 for prerequisites, the mutually exclusive capability, maintenance window, and re-apply steps.
 
-For a same-container target, `root_pid` remains the namespace-local PID shown by procfs. The
-enforcer independently resolves and validates the corresponding kernel identity instead of
-translating or guessing a host PID from an `NSpid` chain. Apply fails closed when the local PID,
+`root_pid` remains the PID shown by the enforcer's procfs, including a Host PID when the target
+runs in a child PID namespace. The enforcer validates the `NSpid` chain and uses its last entry
+to match the task iterator's namespace-local PID. The kernel identity still comes from the
+iterator record and must match the target namespace and start time; it is not guessed from
+`NSpid`. Apply fails closed when the PID mapping, local PID,
 PID namespace, process start time, or procfs clock cannot be validated, including stale or reused
 PIDs and inconsistent container-uptime clocks. With the `agent-file-guard` profile and active
 BPF-LSM, the same initial-or-container PID namespace support applies to `file_delete_guard`.
