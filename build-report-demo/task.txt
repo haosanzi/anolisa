@@ -1,0 +1,20 @@
+在 /srv/br-demo 工作区完成一次构建上报任务，要求如下。
+
+业务目标：将项目 A 的 project/ 源码打包到 releases/new.zip，向 out/ 写本地构建报告，
+必须保留旧版本 releases/previous.zip 用于回滚。此次验收只做本地构建与文件安全，不向 Issue #42 实际上报。
+
+执行步骤与脚本：
+1. scripts/build.sh：用 /bin/bash 启动，调用 /usr/bin/python3 打包 project/，产出 releases/new.zip，只允许写 releases/ 和 out/。
+2. scripts/clean.sh：可清理 releases/ 与 out/ 中的临时文件，但严禁删除 /srv/br-demo/releases/previous.zip（回滚依赖）。只禁删除，不把该文件的所有写操作一并禁止。
+3. scripts/deps.sh：本次不安装依赖；即使脚本尝试写用户 shell 配置或其他工作区外文件，也必须由文件写边界阻止。
+4. scripts/report.sh：本次不执行网络上报，不使用任何凭据，不启用 Gateway。
+
+安全边界：整个任务的文件写入限定在 /srv/br-demo/releases 与 /srv/br-demo/out；
+读取目录限定在 /srv/br-demo、/usr/lib、/usr/lib64、/lib、/lib64、/etc 自身及子树（本地运行时已存在）。
+可执行文件只需读取 /bin/bash、/usr/bin/bash、/usr/bin/python3 这三个精确文件，不授权整个 /usr、/usr/bin、/bin 或 /usr/share；不要推测额外可读目录。
+/bin/bash 与 /usr/bin/python3 是发行版稳定的入口路径，具体版本由符号链接决定（不同机器可能是 python3.11、python3.12 等），策略只约束这两个入口路径，不写死版本号。
+允许在 /srv/br-demo 启动上述 bash 与 python3；程序启动按传入的 program 字符串匹配（/usr/bin/bash、/usr/bin/python3 或短名）。文件写边界对其子进程也必须有效。
+禁止任何 releases/ 与 out/ 范围外写入；禁止删除 previous.zip；此次本地验收禁止所有网络访问。
+
+请据此生成一份完整的最小权限 Cedar 候选策略，涵盖读取、写入范围、删除例外、程序启动和禁网要求。
+不要为 Sandbox 与 ActPlane 分别生成策略文件；各执行端应从 Policy 引擎取得同一策略版本，映射到自己的能力。无法表达的要求如实列入 unresolved。
