@@ -147,7 +147,8 @@ fn validate(result: &IntentCommandResult) -> Result<(), IntentFailure> {
         IntentCommandResult::Candidate { policy, caveats } => {
             let artifact =
                 asc_intent::prepare_policy(policy).map_err(|_| IntentFailure::Response)?;
-            // The daemon returns raw model text, so any local rewrite is a protocol violation.
+            // The daemon returns admitted text, which already carries the roles the fixed option
+            // grammar adds; rebuilding it here still has to reproduce it byte for byte.
             if artifact.text != *policy || !asc_intent::reasons_valid(caveats) {
                 return Err(IntentFailure::Response);
             }

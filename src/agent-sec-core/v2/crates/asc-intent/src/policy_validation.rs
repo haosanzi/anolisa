@@ -556,6 +556,38 @@ pub fn point_aliases(
     Ok(aliases)
 }
 
+/// Drops every statement that names one of `paths`, returning the remaining text and the count.
+///
+/// A candidate may not name a path its own command creates. The permission input resolves every
+/// literal before the launch, so a statement naming an object that does not exist yet fails the
+/// whole input — the launch then never starts, and the approval looks as if it did nothing.
+/// Statements are dropped whole; the ones that stay are re-rendered by the official parser, never
+/// patched by text replacement, and text without a dropped statement is returned unchanged.
+///
+/// # Errors
+/// Rejects text that `prepare_policy` would also reject as unparsable or oversized.
+pub(crate) fn without_named(text: &str, paths: &[String]) -> Result<(String, usize), PolicyError> {
+    let mut kept = Vec::new();
+    let mut dropped = 0;
+    for policy in parse(text)?.policies() {
+        let est = policy.to_json().map_err(|_| PolicyError::Encoding)?;
+        let (_, points, trees) = statement_paths(&est);
+        if points
+            .iter()
+            .chain(trees.iter())
+            .any(|named| paths.iter().any(|path| under(path, named)))
+        {
+            dropped += 1;
+        } else {
+            kept.push(policy.to_string());
+        }
+    }
+    if dropped == 0 {
+        return Ok((text.to_owned(), 0));
+    }
+    Ok((kept.join("\n"), dropped))
+}
+
 /// Collects `resource.path == "..."` literals and the subtrees of `like "<dir>/*"` patterns.
 fn path_literals(value: &Value, points: &mut Vec<String>, subtrees: &mut Vec<String>) {
     let path = json!({".": {"left": {"Var": "resource"}, "attr": "path"}});

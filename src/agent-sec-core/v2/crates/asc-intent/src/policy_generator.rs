@@ -191,7 +191,8 @@ pub enum ProposalOutcome {
 pub enum CommandPolicyOutcome {
     /// Passed the Cedar syntax, path and Strict-type checks; completeness is still unproven.
     Candidate {
-        /// Raw Cedar text with no added rules; an empty string requests no permission.
+        /// Validated Cedar text: the model draft plus the roles a fixed option grammar decides
+        /// (currently archive creation), or an empty string to request no permission.
         policy: String,
         /// Known but uncovered parts, such as an unresolved PATH lookup or script behavior; never
         /// treat them as authorized.
@@ -218,6 +219,9 @@ const COMMAND_ATTEMPTS: u8 = 2;
 /// retry a syntax or typing failure is an error, while a persistent path rejection becomes a
 /// clarification. Validation proves Cedar syntax and types only, never command completeness or
 /// minimality.
+///
+/// The validated draft is then unioned with the file roles a fixed option grammar decides, such
+/// as the archive a `tar -czf` creates and the sources it reads; see [`with_fixed_roles`].
 ///
 /// # Errors
 /// Returns an error for invalid input or model output, invalid Cedar syntax or types, and
@@ -251,10 +255,8 @@ pub fn propose_command(
         match prepare_policy(&response.policy) {
             Ok(artifact) => {
                 check_deadline(deadline)?;
-                return Ok(CommandPolicyOutcome::Candidate {
-                    policy: artifact.text,
-                    caveats: response.caveats,
-                });
+                let (policy, caveats) = with_fixed_roles(input, artifact.text, response.caveats)?;
+                return Ok(CommandPolicyOutcome::Candidate { policy, caveats });
             }
             // A rejected draft is retried once with the local reason, so the model can repair a
             // non-canonical path, a wildcard path literal or a schema mismatch instead of the run
@@ -285,6 +287,43 @@ pub fn propose_command(
             Err(error) => return Err(error.into()),
         }
     }
+}
+
+/// Unions a validated model draft with the file roles a fixed option grammar decides.
+///
+/// A model reads a command as text, so a write that happens inside the program — the archive
+/// `tar -czf` creates, the directory pass `-C` selects — is often only described in a caveat, and
+/// two probes of the same command produced different drafts. The option grammar is not a guess, so
+/// those roles are added here, next to the model text and under the same admission. Any other
+/// command keeps the draft unchanged, as does text the analyser cannot read without expanding it.
+///
+/// A statement naming the archive itself is dropped: the file exists only after the command writes
+/// it, and the permission input resolves every literal before the launch, so keeping it would make
+/// the launch fail instead of narrowing it. The directory write added here creates the file.
+///
+/// The union is admitted like a draft: a defect here fails the proposal instead of silently
+/// dropping a permission the command needs.
+fn with_fixed_roles(
+    input: &crate::CommandInput,
+    model_text: String,
+    caveats: Vec<String>,
+) -> Result<(String, Vec<String>), PolicyError> {
+    let Some(roles) = crate::command_roles::archive_roles(&input.command, &input.cwd) else {
+        return Ok((model_text, caveats));
+    };
+    let (model_text, dropped) =
+        crate::policy_validation::without_named(&model_text, roles.archives())?;
+    let text = match model_text.trim_end() {
+        "" => roles.cedar(),
+        model => format!("{model}\n{}", roles.cedar()),
+    };
+    let artifact = prepare_policy(&text)?;
+    let mut caveats = caveats;
+    caveats.push(roles.caveat());
+    if dropped > 0 {
+        caveats.push(roles.named_caveat(dropped));
+    }
+    Ok((artifact.text, caveats))
 }
 
 /// Orchestration errors carry no task body or model output.

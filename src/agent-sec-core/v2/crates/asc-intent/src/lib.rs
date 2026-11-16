@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
+mod command_roles;
 mod intent_extraction;
 mod policy_generator;
 mod policy_summary;
