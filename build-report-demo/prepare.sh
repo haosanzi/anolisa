@@ -12,7 +12,7 @@
 #
 #   ./prepare.sh /srv/br-demo
 #
-# 之后用同一个目录跑 demo，步骤见 README.md：发布策略 → 建 Scope → 启动 cosh → 五个 case。
+# 之后用同一个目录跑 demo，步骤见 README.md：发布策略 → 建 Scope → 启动 cosh → 六个 Case。
 #
 #   cat README.md
 #
@@ -58,6 +58,8 @@ ZSHRC
 
 # Case 1 的报告：先放一份旧报告，演示时它会被脚本覆盖成 build ok。
 printf 'stale report\n' > "$ROW/out/build.log"
+# Case 6 requests write access to the existing debug log.
+: > "$ROW/out/debug.log"
 
 # Case 1 的演示脚本：报告内容打到标准输出，由命令行重定向走进 out/build.log；随后越界
 # 追加 .zshrc。重定向目标是命令字面量的一部分，候选才申请得到；.zshrc 只出现在脚本内部，
