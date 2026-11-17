@@ -677,9 +677,16 @@ fn prompt_and_wrapper_boundaries() {
     ] {
         assert!(!constraints.contains(duplicated_term));
     }
+    // A task that forbids the network but asks before each use needs the whole-network gate; the
+    // PDP already elevates a matching request to a human decision, so the prompt has to teach it.
+    let (_, gate) = prompt.split_once("## 网络确认\n").unwrap();
+    let (gate, _) = gate.split_once("## schema 与生成约束\n").unwrap();
+    assert!(gate.contains("network.use"));
+    assert!(gate.contains("SecCore::Network::\"all\""));
     // A per-call instruction budget: every rule costs latency and tokens on every proposal, so the
-    // prompt may only grow for a rule with an execution contract behind it, such as the human gate.
-    assert!(prompt.len() <= 7168, "prompt is {} bytes", prompt.len());
+    // prompt may only grow for a rule with an execution contract behind it, such as the human gate
+    // (a path or the whole network) and the network gate the PDP elevates to a human decision.
+    assert!(prompt.len() <= 8192, "prompt is {} bytes", prompt.len());
     for line in prompt.lines() {
         assert!(line.len() <= 100, "prompt line exceeds 100 bytes: {line}");
     }

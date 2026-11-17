@@ -13,7 +13,7 @@ use crate::CEDAR_SCHEMA;
 /// Upper bound for one model call; an earlier caller deadline takes precedence.
 pub const INTENT_BUDGET: Duration = Duration::from_secs(30);
 /// Version of the current Cedar generation prompt.
-pub const PROMPT_VERSION: &str = "cedar-policy@7";
+pub const PROMPT_VERSION: &str = "cedar-policy@8";
 /// Version of the direct Cedar draft format.
 pub const DRAFT_VERSION: &str = "asc.intent.draft.v1";
 

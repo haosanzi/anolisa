@@ -63,10 +63,30 @@ when { resource.path == "/srv/app/config" || resource.path like "/srv/app/config
 ```
 
 - 只加在 permit 上，且这些路径已被同一 action 的另一条 permit 授予；
-  只出现在确认语句里的位置是扩权，先写进写入范围再确认。
+  只出现在确认语句里的路径是扩权，先写进写入范围再确认。
+  整网的 network.use 例外，见网络确认。
 - 条件只用 resource 属性：不写 context、主体约束、补集，也不用 transform。
 - message 沿用 task 原话，是审批卡上的说明，不写“已批准”。
 - 确认不改变授权范围，只让人每次执行前看到请求；不确定时写 unresolved。
+
+## 网络确认
+
+task 既禁网、又要求联网前先问时，写一条整网 permit 加 @advice：
+
+```cedar
+@id("R2")
+@advice("{\"verdict\":\"escalate\",\"message\":\"允许本次命令联网？\"}")
+permit(
+    principal,
+    action == SecCore::Action::"network.use",
+    resource == SecCore::Network::"all"
+);
+```
+
+- 网络没有路径或端点粒度，只能这样写；不确认就不执行，不扩大授权。
+- 这已是该要求的全部语句：不需要另一条 permit 先授予网络。
+- 只写这条确认：不写 forbid，也不写文件路径条件。
+- 只说禁网、没要求确认时，按禁网写注释，不写本条。
 
 ## schema 与生成约束
 
@@ -94,8 +114,9 @@ permit 只用 resource 属性：启动授权读不到 context，
 纯禁止不补 permit；禁止与允许冲突时不要自行选择，记录 unresolved。
 forbid 只能作用于文件读与文件写：
 只有这两个动作能映射到运行时文件保护。
-network.use、process.spawn 上的 forbid 会让整份策略无法下发，
-禁网写成“不授予 network.use”。
+network.use、process.spawn 上的 forbid 会让整份策略无法下发。
+只禁网、不要求逐条确认时写成“不授予 network.use”；
+要求联网前逐条确认时按网络确认写一条整网 permit 加 @advice。
 
 ## 路径与输入边界
 

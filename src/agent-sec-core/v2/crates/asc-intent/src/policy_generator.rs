@@ -405,8 +405,10 @@ fn first_task_draft(
 /// A permit may also carry an escalation advice, which makes an already granted permission ask a
 /// human before each execution. That is only friction when the same action already grants the
 /// paths, so a confirmation outside every other permit's grant is reported as a widening: after a
-/// retry that still shows one, the revision is marked as not to be published. Admitted gates travel
-/// as a `HUMAN GATE:` note with the paths and the message a prompt will show.
+/// retry that still shows one, the revision is marked as not to be published. A `network.use`
+/// gate is exempt: the action has no path dimension, so its gate is the task's own request to ask
+/// before each use. Admitted gates travel as a `HUMAN GATE:` note with the paths (or the whole
+/// network) and the message a prompt will show.
 ///
 /// A `COVERAGE:` note finally names, per requirement `@id`, which consumers can carry its
 /// statements. It is derived from statement shape, not from a deployment.
@@ -595,14 +597,21 @@ fn candidate_notes(
         // The paths and the wording are what the approval prompt shows, so the reviewer reads the
         // gate here rather than discovering it in the middle of a run.
         let mut note = format!(
-            "{HUMAN_GATE_NOTE} these permits stop for confirmation before taking effect, each on \
-             paths another permit already grants, so the gate is friction and not a wider grant:"
+            "{HUMAN_GATE_NOTE} these permits stop for confirmation before taking effect. A path \
+             listed here is also granted by another permit of the same action, so the gate is \
+             friction and not a wider grant; a network.use gate is the whole-network grant itself, \
+             so nothing is allowed without confirming it:"
         );
         for gate in gates {
             note.push_str("\n  ");
             note.push_str(&gate.label());
             note.push(' ');
-            note.push_str(&gate.paths.join(" "));
+            // A whole-network gate names no path; it is the only gate shape without one.
+            if gate.paths.is_empty() {
+                note.push_str("network.use");
+            } else {
+                note.push_str(&gate.paths.join(" "));
+            }
             note.push_str(" -- ");
             note.push_str(&gate.message);
         }
@@ -613,9 +622,9 @@ fn candidate_notes(
         // which execution boundary carries each requirement.
         let mut note = format!(
             "{COVERAGE_NOTE} who can carry each requirement, from statement shape only:\n  permit \
-             -> sandbox + PDP (a permit testing context -> sandbox only);\n  forbid on file.read or \
-             file.write -> os-harness (any other forbid -> none).\n  A Scope still has to apply it; \
-             a requirement without statements is not listed."
+             -> sandbox + PDP (a permit testing context -> sandbox only; network.use -> PDP);\n  \
+             forbid on file.read or file.write -> os-harness (any other forbid -> none).\n  A Scope \
+             still has to apply it; a requirement without statements is not listed."
         );
         for row in coverage {
             note.push_str("\n  ");

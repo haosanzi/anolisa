@@ -266,9 +266,42 @@ fn an_admitted_gate_travels_with_its_paths_and_message() {
     assert_eq!(
         gates,
         [format!(
-            "{HUMAN_GATE_NOTE} these permits stop for confirmation before taking effect, each on \
-             paths another permit already grants, so the gate is friction and not a wider grant:\n  \
+            "{HUMAN_GATE_NOTE} these permits stop for confirmation before taking effect. A path \
+             listed here is also granted by another permit of the same action, so the gate is \
+             friction and not a wider grant; a network.use gate is the whole-network grant itself, \
+             so nothing is allowed without confirming it:\n  \
              #4 @id(\"R2\") /srv/demo/out -- out/ 下的产物每次都要先问我"
         )]
     );
+}
+
+/// Asks before every network use, on the only shape the schema has for it.
+const GATED_NETWORK: &str = r#"@id("R2")
+@advice("{\"verdict\":\"escalate\",\"message\":\"允许本次命令联网？\"}")
+permit(principal, action == SecCore::Action::"network.use",
+       resource == SecCore::Network::"all");"#;
+
+#[test]
+fn a_whole_network_gate_needs_no_other_grant() {
+    // Network has no path or endpoint dimension, so nothing narrower can grant it first; the gate
+    // is the task's own "ask before each use" and still never allows silently.
+    let artifact = prepare_task_policy(GATED_NETWORK).unwrap();
+    assert!(confirmation_gaps(&artifact.text).unwrap().is_empty());
+    let gates = human_gates(&artifact.text).unwrap();
+    assert_eq!(gates.len(), 1);
+    assert_eq!(gates[0].requirement, "R2");
+    assert!(gates[0].paths.is_empty());
+    assert_eq!(gates[0].message, "允许本次命令联网？");
+
+    let provider = Scripted::new(vec![Ok(body(GATED_NETWORK))]);
+    let candidate = propose(&provider);
+    let gates = notes(&candidate, HUMAN_GATE_NOTE);
+    assert_eq!(gates.len(), 1);
+    assert!(
+        gates[0].contains("#3 @id(\"R2\") network.use -- 允许本次命令联网？"),
+        "{gates:?}"
+    );
+    let coverage = notes(&candidate, "COVERAGE:");
+    assert_eq!(coverage.len(), 1);
+    assert!(coverage[0].ends_with("  R2    #3     PDP"), "{coverage:?}");
 }

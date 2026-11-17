@@ -17,6 +17,8 @@ pub const MAX_POLICY_BYTES: usize = 256 * 1024;
 pub(crate) const MAX_POLICIES: usize = 1024;
 /// Requirement key a statement without an `@id` shares with every other unlabelled statement.
 const NO_REQUIREMENT: &str = "no @id";
+/// The one action that covers its whole resource space and therefore needs no path.
+const NETWORK_ACTION: &str = "network.use";
 
 /// Validated Cedar text; validation is neither approval nor a completeness proof.
 #[derive(Debug, Serialize, Deserialize)]
@@ -200,7 +202,8 @@ pub fn runtime_view_gaps(text: &str) -> Result<Vec<String>, PolicyError> {
 /// carrier lists the statements of that carrier as `#N`, so a reader can match every rule to an
 /// execution boundary without opening the statements. Carriers are the consumers the deployment
 /// knows: `sandbox, PDP` for a permit both read, `sandbox only` for one the launch view drops,
-/// `os-harness` for a forbid the runtime protector lowers, and `none` for one it refuses. The
+/// `PDP` for a `network.use` permit the sandbox has no dimension for, `os-harness` for a forbid
+/// the runtime protector lowers, and `none` for one it refuses. The
 /// result follows statement shape only; it says who can express a rule, not that a Scope applied
 /// it or that a backend enforces it, and a requirement with no statement does not appear.
 ///
@@ -211,7 +214,10 @@ pub fn requirement_coverage(text: &str) -> Result<Vec<String>, PolicyError> {
     for (index, policy) in parse(text)?.policies().enumerate() {
         let est = policy.to_json().map_err(|_| PolicyError::Encoding)?;
         let carrier = if policy.effect() == cedar_policy::Effect::Permit {
-            if context_fields(&est["conditions"], &mut Vec::new()) {
+            let network = est["action"]["entity"]["id"].as_str() == Some(NETWORK_ACTION);
+            if network {
+                "PDP"
+            } else if context_fields(&est["conditions"], &mut Vec::new()) {
                 "sandbox only"
             } else {
                 "sandbox, PDP"
@@ -322,6 +328,11 @@ pub fn human_gates(text: &str) -> Result<Vec<HumanGate>, PolicyError> {
 /// one click in front of it, so it is reported: the task has to name that location in its
 /// writable scope first, and only then may a requirement ask about it.
 ///
+/// `network.use` is exempt from that path rule: the action covers the whole network and has no
+/// path or endpoint dimension, so there is nothing narrower to grant first and the gate is the
+/// task's own "ask before each use". The gate still never grants silently, because the runtime
+/// elevates every matching request to a human decision.
+///
 /// A confirmation that tests `context` is reported too: the launch authorizer drops such a permit,
 /// so the request is answered without the escalation and nothing is ever asked.
 ///
@@ -358,6 +369,10 @@ pub fn confirmation_gaps(text: &str) -> Result<Vec<String>, PolicyError> {
             gaps.push(format!(
                 "permit {at} asks before acting without naming exactly one action"
             ));
+            continue;
+        }
+        // A whole-network gate names no path, and no other permit may grant the network first.
+        if action == NETWORK_ACTION {
             continue;
         }
         if points.is_empty() && trees.is_empty() {
@@ -409,7 +424,8 @@ pub struct HumanGate {
     pub requirement: String,
     /// Explanation the approval prompt shows.
     pub message: String,
-    /// Paths the confirmation covers, exactly as the prompt will list them.
+    /// Paths the confirmation covers, exactly as the prompt will list them; empty for a
+    /// whole-network gate, which has no path.
     pub paths: Vec<String>,
     /// Position of the statement in the revision, counting from one.
     pub position: usize,

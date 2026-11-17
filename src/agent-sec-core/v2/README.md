@@ -215,11 +215,13 @@ It is admitted only as a single `escalate` verdict with a nonempty message, neve
 forbid, and only where another permit of the same action already grants the same paths:
 a confirmation that introduces a path would widen authorization behind one click, so it
 is retried once with that reason and otherwise reported as a `HUMAN GATE:` note that
-forbids publishing. Admitted gates travel the same way, with the paths and the message
-the approval prompt will show.
+forbids publishing. `network.use` is the one exemption: the action has no path
+or endpoint dimension, so a whole-network gate is the task's own "ask before each use"
+and the PDP turns every matching request into a human decision. Admitted gates travel the
+same way, with the paths (or the whole network) and the message the approval prompt will show.
 
 Requests use `asc.intent.request.v1`, drafts `asc.intent.draft.v1` with
-`cedar-policy@7`, and candidates `asc.intent.candidate.v1`. Candidates contain the
+`cedar-policy@8`, and candidates `asc.intent.candidate.v1`. Candidates contain the
 original `draft`, final `artifact`, TTL, hashes and `notes`. The artifact is a fixed
 launch base (read the whole filesystem, launch bash) followed by `draft.policy`: the
 program writes the base and the model writes the task's requirements only.
