@@ -288,9 +288,14 @@ pub(crate) fn hook_notification_display_text(
 /// Permissive notices (`allow` / `approve`) carry no decision for the user to
 /// make, so a hook that fires on every tool call floods the panel with byte
 /// identical three-line blocks (issue #2197). They collapse to
-/// `• {hook}: {message}` plus a ` ×N` hit count; every other decision —
+/// `• {hook}: {first line}` plus a ` ×N` hit count; every other decision —
 /// including an absent or unrecognized one — keeps the full multi-line form so
 /// blocked and asked-about actions stay equally prominent.
+///
+/// The collapsed summary keeps the message's own line breaks below the first
+/// line: a hook that reports several facts per call (the sandbox guard prints
+/// the launch and the policy it applied) must stay readable, while single-line
+/// messages render exactly as before.
 ///
 /// The returned events are for rendering only: callers must keep the input
 /// slice intact, because approval-card linking and the audit trail still need
@@ -359,24 +364,34 @@ fn permissive_hook_notification_parts(event: &GovernedEvent) -> Option<(&str, &s
         .then_some((hook_name.as_str(), message.as_str()))
 }
 
-/// Normalizes a hook message for aggregation and single-line display: collapse
-/// whitespace runs, then drop a leading `[hook_name]` that exactly repeats the
-/// hook name the panel already prints.
+/// Normalizes a hook message for aggregation and display: trim trailing
+/// whitespace from each line, drop blank lines, then drop a leading
+/// `[hook_name]` that exactly repeats the hook name the panel already prints.
+/// Line breaks survive, so a notice that carries several facts does not turn
+/// into one run-on sentence.
 fn normalize_hook_message(hook_name: &str, message: &str) -> String {
-    let collapsed = message.split_whitespace().collect::<Vec<_>>().join(" ");
     let hook_name = hook_name.trim();
-    if hook_name.is_empty() {
-        return collapsed;
+    let mut normalized: Vec<&str> = message
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    if !hook_name.is_empty() {
+        let prefix = format!("[{hook_name}]");
+        if let Some(first) = normalized.first_mut() {
+            if let Some(rest) = first.strip_prefix(prefix.as_str()) {
+                *first = rest.trim_start();
+            }
+        }
     }
-
-    if let Some(rest) = collapsed.strip_prefix(&format!("[{hook_name}]")) {
-        return rest.trim_start().to_string();
-    }
-    collapsed
+    normalized.retain(|line| !line.trim().is_empty());
+    normalized.join("\n")
 }
 
 /// Renders one collapsed permissive notice, reusing the localized fallbacks for
-/// an empty hook name or message.
+/// an empty hook name or message. Only the first message line rides on the
+/// bullet; the rest keep their own line breaks so multi-fact notices stay a
+/// block instead of a paragraph.
 fn hook_notification_summary_line(hook_name: &str, message: &str, i18n: &I18n) -> String {
     let hook_name = if hook_name.is_empty() {
         i18n.t(MessageId::AgentGovernanceHookUnknown)
@@ -389,7 +404,14 @@ fn hook_notification_summary_line(hook_name: &str, message: &str, i18n: &I18n) -
         message
     };
 
-    format!("• {hook_name}: {message}")
+    let mut lines = message.lines();
+    let first = lines.next().unwrap_or_default();
+    let mut summary = format!("• {hook_name}: {first}");
+    for line in lines {
+        summary.push('\n');
+        summary.push_str(line);
+    }
+    summary
 }
 
 fn render_recommended_commands(commands: &[String], i18n: &I18n) -> String {

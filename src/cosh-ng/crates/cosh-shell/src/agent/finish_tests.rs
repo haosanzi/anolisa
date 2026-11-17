@@ -131,6 +131,38 @@ fn finish_collapses_repeated_allow_hook_notifications_into_one_line() {
 }
 
 #[test]
+fn finish_renders_multi_line_allow_notice_as_an_indented_block() {
+    let adapter = AdapterInstance::Fake(FakeAgentAdapter);
+    let mut state = InlineState::default();
+    let mut active_run = active_run(&adapter, "run-1", Language::EnUs);
+    active_run
+        .pending_hook_notifications
+        .push(PendingHookNotification {
+            tool_use_id: Some("tool-1".to_string()),
+            hook_name: "sandbox-guard".to_string(),
+            message: "Sandbox: command allowed.\nDirectory: /srv/br-demo\n\
+                      Candidate policy: file.write out/build-report.log"
+                .to_string(),
+            decision: Some("allow".to_string()),
+        });
+    state.agent_run.active = Some(active_run);
+    let mut output = Vec::new();
+
+    finish_active_agent_run(&mut state, &mut output, &adapter).expect("finish run");
+
+    let rendered = String::from_utf8_lossy(&output);
+    assert!(
+        rendered.contains("• sandbox-guard: Sandbox: command allowed."),
+        "{rendered}"
+    );
+    assert!(rendered.contains("  Directory: /srv/br-demo"), "{rendered}");
+    assert!(
+        rendered.contains("  Candidate policy: file.write out/build-report.log"),
+        "{rendered}"
+    );
+}
+
+#[test]
 fn recovery_context_collapses_allow_notices_and_omits_provider_timeout() {
     let adapter = AdapterInstance::Fake(FakeAgentAdapter);
     let mut active_run = active_run(&adapter, "run-1", Language::EnUs);

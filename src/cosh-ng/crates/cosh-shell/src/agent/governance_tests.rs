@@ -54,8 +54,9 @@ fn hook_notification_projection_collapses_identical_allow_notices_with_hit_count
     assert_eq!(projected.len(), 1);
     let line = &projected[0].display_text;
     assert!(line.ends_with(" ×3"), "{line}");
-    // Collapsed notices are single-line weak hints: no `Decision: allow` row,
-    // and no duplicated `[pii-checker]` prefix beside the hook name.
+    // Collapsed notices stay weak hints: one bullet line for a message that has
+    // no line breaks of its own, no `Decision: allow` row, and no duplicated
+    // `[pii-checker]` prefix beside the hook name.
     assert_eq!(line.lines().count(), 1, "{line}");
     assert!(
         line.starts_with("• pii-checker: detected 2 sensitive items;"),
@@ -65,6 +66,27 @@ fn hook_notification_projection_collapses_identical_allow_notices_with_hit_count
     assert!(!line.contains("[pii-checker]"), "{line}");
     // Digits still distinguish the underlying security hit.
     assert!(line.contains("[REDACTED_CARD:2603]"), "{line}");
+}
+
+// A permissive notice that carries several facts (the sandbox guard prints the
+// launch, the directory, and the policy it applied) must keep its line breaks:
+// collapsing it into one paragraph is what made the applied policy unreadable.
+#[test]
+fn hook_notification_projection_keeps_multi_line_allow_notice_as_a_block() {
+    let message =
+        "Sandbox: command allowed.\nFinal command: /usr/bin/bash -c 'rm releases/previous.zip'\n\
+         Directory: /srv/br-demo\nCandidate policy: file.write releases, releases/*";
+    let events = vec![hook_event("sandbox-guard", message, Some("allow"))];
+
+    let (_, projected) = govern_and_project(&events, Language::EnUs);
+
+    assert_eq!(
+        display_texts(&projected),
+        ["• sandbox-guard: Sandbox: command allowed.\n\
+             Final command: /usr/bin/bash -c 'rm releases/previous.zip'\n\
+             Directory: /srv/br-demo\n\
+             Candidate policy: file.write releases, releases/*"]
+    );
 }
 
 #[test]
