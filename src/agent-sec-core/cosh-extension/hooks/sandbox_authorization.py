@@ -3,10 +3,12 @@
 import importlib
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
 import tempfile
+import textwrap
 import time
 import unicodedata
 from typing import Any
@@ -14,6 +16,20 @@ from typing import Any
 ALL_SHELL_ENV = "AGENT_SEC_COSH_SANDBOX_ALL_SHELL"
 SOURCE_ENV = "AGENT_SEC_COSH_SANDBOX_PERMISSION_SOURCE"
 RUNTIME_ENV = "AGENT_SEC_COSH_SANDBOX_RUNTIME_PERMISSIONS"
+POLICY_PREFIX = "Candidate policy: "
+POLICY_INDENT = "  "
+# Cosh renders an allowed notice line by line and only collapses repeated ones
+# into an `xN` count, so the candidate keeps its own row instead of being folded
+# into the launch paragraph. The approval card goes further: it prints a message
+# row as it is and clips whatever passes the border, so the rows are folded here.
+MAX_POLICY_GROUPS = 6
+MAX_POLICY_WIDTH = 72
+_ACTION = re.compile(r'action\s*==\s*SecCore::Action::"([^"]+)"')
+_CONDITION = re.compile(r'resource\.(path|program)\s*(==|like)\s*"((?:[^"\\]|\\.)*)"')
+# Statements keep their own semicolons: a generated path may contain one.
+_STATEMENT = re.compile(
+    r"(?:permit|forbid)\s*\(.*?\)(?:\s*when\s*\{.*?\})?\s*;?", re.DOTALL
+)
 # Leave time for Python startup and error projection inside the 60 s / 15 s hooks.
 PREPARE_TIMEOUT = 55
 INTENT_TIMEOUT = 40
@@ -54,6 +70,96 @@ def _notes(value: object) -> list[str]:
     ):
         raise ValueError("invalid command intent explanation")
     return value
+
+
+def _clip(statement: str) -> str:
+    flat = " ".join(statement.split())
+    return _display(flat if len(flat) <= 200 else flat[:199] + "…")
+
+
+def _statements(policy: str) -> list[str]:
+    """Drops comments and annotations: the generator's notes and the PDP's advice."""
+    text = " ".join(
+        line for line in policy.splitlines() if not line.strip().startswith(("//", "@"))
+    )
+    statements = [
+        statement.rstrip(";").strip() for statement in _STATEMENT.findall(text)
+    ]
+    # Nothing recognizable: keep the text verbatim instead of dropping it.
+    return statements or ([text] if text.strip() else [])
+
+
+def _literal(value: str, root: str) -> str:
+    """Shortens a path below the launch cwd, which the message already printed."""
+    if value.startswith(root + "/"):
+        return value[len(root) + 1 :]
+    return value
+
+
+def _policy_rows(part: str, head: str, width: int) -> list[str]:
+    """Folds one action group: a single row past the border is silently clipped.
+
+    Values are joined with `, `, so the fold lands on a separator instead of in
+    the middle of a path; only a lone value wider than the row is cut.
+    """
+    return textwrap.wrap(
+        part,
+        width,
+        initial_indent=head,
+        subsequent_indent=POLICY_INDENT,
+        break_long_words=True,
+        break_on_hyphens=False,
+    ) or [head + part]
+
+
+def _policy_summary(policy: str, root: str) -> str:
+    """Renders the candidate as rows: one action per row, folded to stay visible."""
+    groups: list[tuple[str, list[str]]] = []
+    for statement in _statements(policy):
+        effect = statement.split("(", 1)[0].strip()
+        action = _ACTION.search(statement)
+        values = [value for _, _, value in _CONDITION.findall(statement)]
+        if effect not in ("permit", "forbid") or action is None or not values:
+            # Unrecognized shapes stay verbatim so the prompt never invents a meaning.
+            groups.append((_clip(statement), []))
+            continue
+        label = _display(action.group(1))
+        if effect == "forbid":
+            # Permits are the common case; only a restriction needs calling out.
+            label = f"forbid {label}"
+        literals = [_display(_literal(value, root)) for value in values]
+        for name, existing in groups:
+            if name == label:
+                existing.extend(literals)
+                break
+        else:
+            groups.append((label, literals))
+    parts = [
+        f"{name} {', '.join(dict.fromkeys(values))}" if values else name
+        for name, values in groups[:MAX_POLICY_GROUPS]
+    ]
+    if len(groups) > MAX_POLICY_GROUPS:
+        parts.append(f"+{len(groups) - MAX_POLICY_GROUPS} more")
+    rows: list[str] = []
+    for index, part in enumerate(parts):
+        # The first group also carries the prefix, so it folds into a shorter row.
+        head = POLICY_PREFIX if index == 0 else POLICY_INDENT
+        rows.extend(_policy_rows(part, head, MAX_POLICY_WIDTH))
+    return "\n".join(rows)
+
+
+def _with_policy(message: str, summary: str) -> str:
+    """Shows the candidate on its own row after the launch it belongs to.
+
+    The clause goes below `Directory:` so the card reads launch first, then the
+    policy the launch was checked against, before any granted set.
+    """
+    clause = summary.split("\n")
+    rows = message.split("\n")
+    for index, current in enumerate(rows):
+        if current.startswith("Directory:"):
+            return "\n".join(rows[: index + 1] + clause + rows[index + 1 :])
+    return "\n".join([*rows, *clause])
 
 
 def _propose(
@@ -122,7 +228,7 @@ def prepare_authorized(input_data: dict[str, Any], command: str) -> dict[str, An
     """Fail closed once the operator has enabled policy authorization."""
     deadline = time.monotonic() + PREPARE_TIMEOUT
     temporary = None
-    caveats = []
+    candidate = ""
     try:
         if os.environ.get("COSH_HOOK_EMPTY_OUTPUT_POLICY") != "block":
             raise ValueError(
@@ -168,7 +274,7 @@ def prepare_authorized(input_data: dict[str, Any], command: str) -> dict[str, An
             }
             payload.update(cwd=cwd, tool_input={"command": command})
             proposal = _propose(executable, command, cwd, deadline)
-            caveats = proposal["caveats"]
+            candidate = _policy_summary(proposal["policy"], cwd)
             temporary = tempfile.NamedTemporaryFile(
                 mode="w", encoding="utf-8", suffix=".cedar"
             )
@@ -218,17 +324,19 @@ def prepare_authorized(input_data: dict[str, Any], command: str) -> dict[str, An
         projected = {
             key: output[key] for key in ("decision", "reason", "systemMessage")
         }
+        # TODO(sec-core maintainers): the granted set is the PEP's (CLI) rendering; this
+        # Hook only adds the intent candidate, which is a request and never a grant.
+        # The approval card carries the candidate too: approving it is the only moment
+        # that request is shown, and no Governance notice follows the handoff.
+        if candidate and output["decision"] in ("allow", "ask"):
+            projected["reason"] = projected["systemMessage"] = _with_policy(
+                output["reason"], candidate
+            )
         # TODO(sec-core maintainers): Remove caveats from the command prompt, intent/
-        # daemon protocol, CLI, and Hook together; update tests/docs while preserving
-        # needs_clarification and strict validation. Until then, omit them from ask.
-        if source == "command" and output["decision"] != "ask":
-            notice = "Command permission candidate (not approval)."
-            if not proposal["policy"].strip():
-                notice += " Empty candidate: no business permissions requested."
-            for caveat in caveats:
-                notice += "\nCandidate caveat: " + _display(caveat)
-            for key in ("reason", "systemMessage"):
-                projected[key] += "\n" + notice
+        # daemon protocol and CLI together; update tests/docs while preserving
+        # needs_clarification and strict validation. The Hook still validates the
+        # candidate caveats but never shows them: the PDP message stays the whole
+        # operator-facing text, with only the candidate request appended.
         if output["decision"] != "block":
             specific = output.get("hookSpecificOutput")
             tool_input = (
@@ -267,10 +375,7 @@ def prepare_authorized(input_data: dict[str, Any], command: str) -> dict[str, An
         KeyError,
         subprocess.SubprocessError,
     ) as error:
-        message = _display(str(error))
-        for caveat in caveats:
-            message += "\nCandidate caveat: " + _display(caveat)
-        return authorization_error(message)
+        return authorization_error(_display(str(error)))
     finally:
         if temporary is not None:
             temporary.close()

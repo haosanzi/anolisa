@@ -98,15 +98,126 @@ def test_candidate_uses_same_command_cwd_and_private_cleaned_file(
     monkeypatch.setattr(bridge.subprocess, "run", run)
     result = bridge.prepare_authorized(dynamic, command)
     assert result["decision"] == decision
-    if decision == "ask":
-        assert result == authorized(decision)
-    else:
-        for key in ("reason", "systemMessage"):
-            assert "Command permission candidate (not approval)." in result[key]
-            assert "Empty candidate: no business permissions requested" in result[key]
-            assert CANDIDATE["caveats"][0] in result[key]
+    # The PDP message is the operator-facing text; an empty candidate appends
+    # nothing to it, and a blocked command never gets the request at all.
+    assert result == authorized(decision)
     assert len(calls) == 2
     assert all(not path.exists() for path in paths)
+
+
+def test_candidate_summary_groups_drops_notes_and_shortens_cwd_paths() -> None:
+    policy = (
+        "// CANDIDATE: not approved; not effective.\n"
+        '@advice("{\\"verdict\\":\\"escalate\\"}")\n'
+        'permit(principal, action == SecCore::Action::"file.write", resource is SecCore::File)'
+        ' when { resource.path == "/srv/br-demo/releases" ||'
+        ' resource.path like "/srv/br-demo/releases/*" };\n'
+        'permit(principal, action == SecCore::Action::"file.write", resource is SecCore::File)'
+        ' when { resource.path == "/srv/br-demo/dist/latest.zip" };\n'
+        'permit(principal, action == SecCore::Action::"network.use",'
+        ' resource == SecCore::Network::"all");\n'
+    )
+    assert bridge._policy_summary(policy, "/srv/br-demo") == (
+        "Candidate policy: file.write releases, releases/*, dist/latest.zip\n"
+        '  permit(principal, action == SecCore::Action::"network.use", resource\n'
+        '  == SecCore::Network::"all")'
+    )
+
+
+def test_candidate_summary_is_empty_without_statements() -> None:
+    assert bridge._policy_summary("// CANDIDATE: not approved.\n", "/srv/br-demo") == ""
+
+
+def test_allow_appends_the_candidate_after_the_launch(
+    dynamic: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    policy = (
+        'permit(principal, action == SecCore::Action::"file.write", resource is SecCore::File)'
+        ' when { resource.path == "/var/log/demo.log" };'
+        ' permit(principal, action == SecCore::Action::"process.spawn",'
+        ' resource is SecCore::Process) when { resource.program == "bash" };'
+    )
+    message = (
+        "Sandbox: command allowed.\nFinal command: /usr/bin/bash -c true\n"
+        "Directory: /srv/br-demo\n"
+        "File access (other paths blocked; restrictions override grants):\n  Read: /etc"
+    )
+
+    def run(args: list[str], **kwargs: Any) -> SimpleNamespace:
+        if "propose-command" in args:
+            return response(CANDIDATE | {"policy": policy})
+        return response(authorized() | {"reason": message, "systemMessage": message})
+
+    monkeypatch.setattr(bridge.subprocess, "run", run)
+    result = bridge.prepare_authorized(dynamic, "true")
+    assert result["decision"] == "allow"
+    assert result["reason"] == result["systemMessage"]
+    assert result["systemMessage"].split("\n") == [
+        "Sandbox: command allowed.",
+        "Final command: /usr/bin/bash -c true",
+        "Directory: /srv/br-demo",
+        "Candidate policy: file.write /var/log/demo.log",
+        "  process.spawn bash",
+        "File access (other paths blocked; restrictions override grants):",
+        "  Read: /etc",
+    ]
+
+
+def test_allow_without_candidate_text_keeps_the_pdp_message(
+    dynamic: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def run(args: list[str], **kwargs: Any) -> SimpleNamespace:
+        if "propose-command" in args:
+            return response(CANDIDATE)
+        return response(authorized())
+
+    monkeypatch.setattr(bridge.subprocess, "run", run)
+    assert bridge.prepare_authorized(dynamic, "true") == authorized()
+
+
+def test_approval_card_appends_the_candidate_after_its_reasons(
+    dynamic: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    policy = (
+        'permit(principal, action == SecCore::Action::"file.read",'
+        ' resource is SecCore::File) when { resource.path == "/srv/br-demo/out/build.log" };'
+        ' permit(principal, action == SecCore::Action::"file.write",'
+        " resource is SecCore::File)"
+        ' when { resource.path == "/srv/br-demo/dist/latest.zip" };'
+        ' permit(principal, action == SecCore::Action::"file.write",'
+        " resource is SecCore::File)"
+        ' when { resource.path == "/srv/br-demo/releases"'
+        ' || resource.path like "/srv/br-demo/releases/*" };'
+    )
+    # Cosh shows no Governance notice after the handoff, so the approval card is the
+    # only place this request can be read before the operator decides.
+    approval = (
+        "允许本次命令使用以下权限吗？\n\n"
+        "    /usr/bin/bash -c 'cp out/build.log dist/latest.zip && rm releases/previous.zip'\n\n"
+        " 写文件 /srv/br-demo/dist/latest.zip\n"
+        "    原因：dist/ 是正式发布区，每次都要先问我"
+    )
+
+    def run(args: list[str], **kwargs: Any) -> SimpleNamespace:
+        if "propose-command" in args:
+            return response(CANDIDATE | {"policy": policy})
+        return response(
+            authorized("ask") | {"reason": approval, "systemMessage": approval}
+        )
+
+    monkeypatch.setattr(bridge.subprocess, "run", run)
+    result = bridge.prepare_authorized(
+        dynamic, "cp out/build.log dist/latest.zip && rm releases/previous.zip"
+    )
+    assert result["decision"] == "ask"
+    assert result["reason"] == result["systemMessage"]
+    assert result["systemMessage"].split("\n") == [
+        *approval.split("\n"),
+        # The fixture cwd is not the literal root, so nothing is shortened away.
+        "Candidate policy: file.read /srv/br-demo/out/build.log",
+        "  file.write /srv/br-demo/dist/latest.zip, /srv/br-demo/releases,",
+        "  /srv/br-demo/releases/*",
+    ]
 
 
 def test_unset_preset_leaves_the_launch_baseline_to_the_cli(
@@ -193,7 +304,7 @@ def test_failures_never_fallback_and_clean_candidates(
     assert len(calls) == (1 if stage == "intent" else 2)
     assert all(not path.exists() for path in paths)
     if stage == "prepare":
-        assert CANDIDATE["caveats"][0] in result["systemMessage"]
+        assert CANDIDATE["caveats"][0] not in result["systemMessage"]
 
 
 def test_generation_and_authorization_share_total_budget(
