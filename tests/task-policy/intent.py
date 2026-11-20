@@ -19,7 +19,7 @@ def check_intent() -> None:
         "--command",
         "cat /etc/os-release",
         "--cwd",
-        "/srv",
+        str(SHARED_ROW.parent),
         "--format",
         "json",
     )
@@ -91,7 +91,7 @@ def main():
     if args.check:
         print("PASS command intent")
         return
-    report = Path(tempfile.mkdtemp(prefix="br-intent-", dir="/var/tmp"))
+    report = Path(tempfile.mkdtemp(prefix="anolisa-intent-report-", dir="/var/tmp"))
     print(f"Run report: {report}", flush=True)
     draft = generate_policy(SHARED_ROW, report)
     print(f"Consumer input: --policy {draft}")

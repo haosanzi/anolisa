@@ -17,6 +17,29 @@ import sight
 
 
 class SuiteTests(unittest.TestCase):
+    def test_shared_policy_points_to_the_test_workspace(self):
+        policy = (common.HERE / "task.cedar").read_text()
+        for target in (
+            "releases/previous.zip",
+            "project/deploy.env",
+            "config/*",
+            "dist/*",
+            "out/*",
+            "releases/*",
+        ):
+            with self.subTest(target=target):
+                self.assertIn(f'"{common.SHARED_ROW}/{target}"', policy)
+
+    def test_existing_workspace_survives_a_failed_start(self):
+        with tempfile.TemporaryDirectory() as directory:
+            row = Path(directory)
+            keep = row / "existing.txt"
+            keep.write_text("keep")
+            with patch.object(common, "SHARED_ROW", row), ExitStack() as cleanup:
+                with self.assertRaisesRegex(RuntimeError, "already exists"):
+                    common.create_workspace(cleanup)
+            self.assertEqual(keep.read_text(), "keep")
+
     def test_component_preflights(self):
         with patch.object(intent, "cli", return_value={"outcome": "candidate"}) as cli:
             intent.check_intent()

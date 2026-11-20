@@ -2,8 +2,8 @@
 // unresolved: []
 // HUMAN GATE: these permits stop for confirmation before taking effect. A path listed here is also granted by another permit of the same action, so the gate is friction and not a wider grant; a network.use gate is the whole-network grant itself, so nothing is allowed without confirming it:
 //   #4 @id("R2") network.use -- 确实需要联网时，每条命令都要先在审批卡上问我
-//   #6 @id("R4") /srv/br-demo/config -- config/ 下是我手工维护的构建配置，每次写入前都要先问我
-//   #7 @id("R5") /srv/br-demo/dist -- dist/ 是正式发布区，每次写入前都要先问我
+//   #6 @id("R4") /run/anolisa-task-policy/config -- config/ 下是我手工维护的构建配置，每次写入前都要先问我
+//   #7 @id("R5") /run/anolisa-task-policy/dist -- dist/ 是正式发布区，每次写入前都要先问我
 // COVERAGE: who can carry each requirement, from statement shape only:
 //   permit -> sandbox + PDP (a permit testing context -> sandbox only; network.use -> PDP);
 //   forbid on file.read or file.write -> os-harness (any other forbid -> none).
@@ -52,7 +52,7 @@ forbid(
     resource is SecCore::File
 )
 when {
-    resource.path == "/srv/br-demo/releases/previous.zip" &&
+    resource.path == "/run/anolisa-task-policy/releases/previous.zip" &&
     context.input.operation == SecCore::WriteOperation::"delete"
 };
 
@@ -79,7 +79,7 @@ forbid(
     resource is SecCore::File
 )
 when {
-    resource.path == "/srv/br-demo/project/deploy.env"
+    resource.path == "/run/anolisa-task-policy/project/deploy.env"
 };
 
 // ============================================================
@@ -94,8 +94,8 @@ permit(
     resource is SecCore::File
 )
 when {
-    resource.path == "/srv/br-demo/config" ||
-    resource.path like "/srv/br-demo/config/*"
+    resource.path == "/run/anolisa-task-policy/config" ||
+    resource.path like "/run/anolisa-task-policy/config/*"
 };
 
 // ============================================================
@@ -110,8 +110,8 @@ permit(
     resource is SecCore::File
 )
 when {
-    resource.path == "/srv/br-demo/dist" ||
-    resource.path like "/srv/br-demo/dist/*"
+    resource.path == "/run/anolisa-task-policy/dist" ||
+    resource.path like "/run/anolisa-task-policy/dist/*"
 };
 
 // ============================================================
@@ -125,12 +125,12 @@ permit(
     resource is SecCore::File
 )
 when {
-    resource.path == "/srv/br-demo/releases" ||
-    resource.path like "/srv/br-demo/releases/*" ||
-    resource.path == "/srv/br-demo/out" ||
-    resource.path like "/srv/br-demo/out/*" ||
-    resource.path == "/srv/br-demo/config" ||
-    resource.path like "/srv/br-demo/config/*" ||
-    resource.path == "/srv/br-demo/dist" ||
-    resource.path like "/srv/br-demo/dist/*"
+    resource.path == "/run/anolisa-task-policy/releases" ||
+    resource.path like "/run/anolisa-task-policy/releases/*" ||
+    resource.path == "/run/anolisa-task-policy/out" ||
+    resource.path like "/run/anolisa-task-policy/out/*" ||
+    resource.path == "/run/anolisa-task-policy/config" ||
+    resource.path like "/run/anolisa-task-policy/config/*" ||
+    resource.path == "/run/anolisa-task-policy/dist" ||
+    resource.path like "/run/anolisa-task-policy/dist/*"
 };

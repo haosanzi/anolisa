@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SHARED_ROW = Path("/srv/br-demo")
+SHARED_ROW = Path("/run/anolisa-task-policy")
 SHELL_CONFIG = b"# build-report self-test shell configuration\n"
 SOURCE = b"source must remain unchanged\n"
 
@@ -38,16 +38,17 @@ def cli(*args: str):
 def check_host() -> None:
     require(
         sys.platform.startswith("linux"),
-        "Use a Linux host with the installed demo components",
+        "Use a Linux host with the installed test components",
     )
     require(shutil.which("agent-sec-cli"), "Missing executable: agent-sec-cli")
 
 
-def test_account(user: str):
+def test_account(user: str | None):
     require(
         os.geteuid() == 0,
         "Use sudo to administer PAP and launch the test as an unprivileged account",
     )
+    require(user, "Pass --user NAME when running directly as root")
     try:
         account = pwd.getpwnam(user)
     except KeyError as exc:
@@ -81,7 +82,7 @@ def fixture(row: Path, account) -> bytes:
         "out/github-user.json": b"{}",
         "out/http-status": b"",
         "scripts/build-with-setup.sh": (
-            f"#!/usr/bin/env bash\nprintf 'build ok\\n'\nprintf 'demo-marker\\n' >> {row}/home/.zshrc\n"
+            f"#!/usr/bin/env bash\nprintf 'build ok\\n'\nprintf 'config-change\\n' >> {row}/home/.zshrc\n"
             'echo "zshrc-update rc=$?" >&2\n'
         ).encode(),
     }
@@ -160,9 +161,11 @@ def await_evidence(check, *args):
 
 @contextmanager
 def local_run():
-    with open("/run/br-selftest.lock", "a") as lock:
+    with open("/run/anolisa-task-policy.lock", "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        report = Path(tempfile.mkdtemp(prefix="br-selftest-", dir="/var/tmp"))
+        report = Path(
+            tempfile.mkdtemp(prefix="anolisa-task-policy-report-", dir="/var/tmp")
+        )
         print(f"Run report: {report}", flush=True)
         try:
             with ExitStack() as cleanup:
@@ -182,10 +185,9 @@ class PolicyRun:
     previous: bytes
 
 
-def prepare_consumer(args, account, report, cleanup) -> PolicyRun:
+def create_workspace(cleanup: ExitStack) -> Path:
     row = SHARED_ROW
-    # Both suites need the absolute paths embedded in the shared Cedar source.
-    # Only remove a directory this invocation created under the root-owned /srv.
+    # The shared Cedar embeds absolute paths. Only remove a workspace we created.
     try:
         row.mkdir(mode=0o700)
     except FileExistsError as exc:
@@ -193,6 +195,11 @@ def prepare_consumer(args, account, report, cleanup) -> PolicyRun:
             f"{row} already exists; use a host where this fixture path is free"
         ) from exc
     cleanup.callback(shutil.rmtree, row)
+    return row
+
+
+def prepare_consumer(args, account, report, cleanup) -> PolicyRun:
+    row = create_workspace(cleanup)
     previous = fixture(row, account)
     row.chmod(0o755)
     draft = report / "task.cedar"
@@ -209,7 +216,11 @@ def consumer_cli(description, preflight, exercise):
     parser.add_argument(
         "--check", action="store_true", help="check this component's prerequisites"
     )
-    parser.add_argument("--user", default="demo", help="non-root probe account")
+    parser.add_argument(
+        "--user",
+        default=os.environ.get("SUDO_USER"),
+        help="non-root probe account (default: sudo caller)",
+    )
     parser.add_argument(
         "--policy", type=Path, default=HERE / "task.cedar", help="shared task policy"
     )

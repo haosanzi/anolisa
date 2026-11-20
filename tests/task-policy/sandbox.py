@@ -27,7 +27,7 @@ def probe(case: str, row: Path, account) -> None:
         "1": ("out/build.log", "bash scripts/build-with-setup.sh > out/build.log 2>&1"),
         "2": (
             "project/source-guard.txt",
-            "printf 'demo-change\\n' > project/source-guard.txt",
+            "printf 'source-change\\n' > project/source-guard.txt",
         ),
         "5-deny": ("dist/latest.zip", "printf 'published\\n' > dist/latest.zip"),
     }[case]
