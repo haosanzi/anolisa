@@ -462,11 +462,16 @@ fn invalid_and_unsupported() {
         "permit(principal == SecCore::Subject::\"A\", action, resource);",
         "permit(principal, action, resource == SecCore::File::\"/a\");",
         "permit(principal, action, resource) when { principal == SecCore::Subject::\"A\" };",
+        // `@advice` is admitted only as the escalation contract; anything else stays unsupported.
         "@advice(\"audit\") permit(principal, action, resource);",
+        "@advice(\"{\\\"verdict\\\":\\\"warn\\\",\\\"message\\\":\\\"x\\\"}\") permit(principal, action, resource);",
         "@trusted(\"yes\") permit(principal, action, resource);",
     ] {
         assert!(
-            matches!(prepare_policy(policy), Err(PolicyError::UnsupportedPolicy)),
+            matches!(
+                prepare_policy(policy),
+                Err(PolicyError::UnsupportedPolicy | PolicyError::Advice)
+            ),
             "{policy}"
         );
     }
@@ -651,8 +656,10 @@ fn input_budgets_and_deadlines() {
 
 fn prompt_and_wrapper_boundaries() {
     let prompt = include_str!("../prompts/policy-generation.md");
-    let (_, constraints) = prompt.split_once("## schema 与生成约束\n").unwrap();
-    let (constraints, _) = constraints.split_once("## 路径与输入边界\n").unwrap();
+    let constraints = prompt
+        .split("\n## ")
+        .find(|section| section.starts_with("schema "))
+        .expect("the prompt must contain a schema section");
     assert!(constraints.contains("seccore.cedarschema"));
     for duplicated_term in [
         "file.read",
@@ -663,7 +670,14 @@ fn prompt_and_wrapper_boundaries() {
     ] {
         assert!(!constraints.contains(duplicated_term));
     }
-    assert!(prompt.len() <= 6000);
+    let (_, example) = prompt.split_once("```cedar\n").unwrap();
+    let (example, _) = example.split_once("\n```").unwrap();
+    let artifact = asc_intent::prepare_task_policy(example).unwrap();
+    let gates = asc_intent::human_gates(&artifact.text).unwrap();
+    assert_eq!(gates.len(), 1);
+    assert!(gates[0].paths.is_empty());
+    assert!(example.contains("SecCore::Network::\"all\""));
+    assert!(prompt.len() <= 6000, "prompt is {} bytes", prompt.len());
     for line in prompt.lines() {
         assert!(line.len() <= 100, "prompt line exceeds 100 bytes: {line}");
     }
