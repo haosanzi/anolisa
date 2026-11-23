@@ -191,3 +191,78 @@ fn a_persistent_path_rejection_becomes_a_clarification() {
     ));
     assert_eq!(provider.calls(), 2);
 }
+
+#[test]
+fn literal_archive_and_glob_commands_request_only_their_data_scopes() {
+    use asc_intent::summarize;
+    let provider = Scripted::new(&[]);
+    for (command, read, write) in [
+        (
+            "cat src/*.txt > out/all.txt",
+            "/work/src/*",
+            "/work/out/all.txt",
+        ),
+        (
+            "cat '/source dir'/*.log > '/work/out/all logs'",
+            "/source dir/*",
+            "/work/out/all logs",
+        ),
+        ("tar -cf out/a.tar -C src .", "/work/src/*", "/work/out/*"),
+        (
+            "tar -czf /archives/a.tgz -C '/source dir' .",
+            "/source dir/*",
+            "/archives/*",
+        ),
+        (
+            "tar --create --file='out dir/a.tar' --directory 'src dir' .",
+            "/work/src dir/*",
+            "/work/out dir/*",
+        ),
+        ("tar -c --file a.tar -C src .", "/work/src/*", "/work/a.tar"),
+    ] {
+        let data = CommandInput {
+            command: command.to_owned(),
+            cwd: "/work".into(),
+        };
+        let result = propose_command(&provider, "fixture", &data, deadline()).unwrap();
+        let CommandPolicyOutcome::Candidate { policy, .. } = result else {
+            panic!("{command}")
+        };
+        let summary = summarize(&policy).unwrap();
+        let permissions: Vec<_> = summary
+            .permits
+            .iter()
+            .map(|p| (p.action.label(), p.path.as_ref().unwrap().display()))
+            .collect();
+        assert_eq!(
+            permissions,
+            [("read", read.to_owned()), ("write", write.to_owned())],
+            "{command}"
+        );
+    }
+    assert_eq!(provider.calls(), 0);
+}
+
+#[test]
+fn shell_expansions_and_unknown_tar_options_use_the_model() {
+    for command in [
+        "cat 'src/*.txt' > out/all",
+        "cat src/*/*.txt > out/all",
+        "cat src/*.txt > out/all; pwd",
+        "cat src/*.txt 2>out/errors",
+        "tar -cf . -C src .",
+        "tar -cf /work -C src .",
+        "tar -cf out/a.tar --files-from manifest",
+        "tar -cf remote:archive -C src .",
+        "tar -xf out/a.tar",
+        "tar -cf out/a.tar -C ../unknown .",
+    ] {
+        let provider = Scripted::new(&[body(VALID)]);
+        let data = CommandInput {
+            command: command.to_owned(),
+            cwd: "/work".into(),
+        };
+        propose_command(&provider, "fixture", &data, deadline()).unwrap();
+        assert_eq!(provider.calls(), 1, "{command}");
+    }
+}
