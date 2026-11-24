@@ -35,7 +35,7 @@ pub use action::{CodeScanParams, PiiScanParams, PromptScanParams, PromptScanWarm
 pub use common::{ListParams, ListResult, ResourceParams, RevisionParams};
 pub use envelope::{DaemonRequest, V1Request};
 pub use gateway::GatewayKeyRemoveParams;
-pub use pap::{CreatePolicyParams, CreateScopeParams, UpdatePolicyParams};
+pub use pap::{CreatePolicyParams, CreateScopeParams, ResolveLandlockParams, UpdatePolicyParams};
 pub use query::SecQueryParams;
 pub use response::{
     DaemonError, DaemonResponse, ErrorCode, ErrorResponse, MAX_DAEMON_ERROR_MESSAGE_BYTES,

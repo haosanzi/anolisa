@@ -22,6 +22,8 @@ pub const POLICY_TEMPLATES_LIST: &str = "policy.templates.list";
 pub const POLICY_TEMPLATES_DELETE: &str = "policy.templates.delete";
 /// Create an immutable assignment with exact Policy snapshots.
 pub const POLICY_SCOPES_CREATE: &str = "policy.scopes.create";
+/// Resolves an executable's active Landlock launch scope for a local peer.
+pub const LANDLOCK_RESOLVE: &str = "policy.landlock.resolve";
 /// Retry failed work owned by one Scope.
 pub const POLICY_SCOPES_RETRY: &str = "policy.scopes.retry";
 /// Read an assignment and its lifecycle status.
@@ -282,6 +284,8 @@ pub enum MethodId {
     ObservabilityQuery(ObservabilityQueryMethod),
     /// PAP administration method.
     Pap(PapMethod),
+    /// Resolve a protected launch for the authenticated caller.
+    LandlockResolve,
     /// Action capability method.
     Action(ActionMethod),
     /// Single-record observability ingestion.
@@ -333,6 +337,7 @@ impl MethodId {
             // rather than from the request. Gateway status uses the authenticated
             // peer UID; the shared public CA query carries no Scope authority.
             Self::Health
+            | Self::LandlockResolve
             | Self::IntentPropose
             | Self::IntentProposeCommand
             | Self::Gateway(GatewayMethod::Status | GatewayMethod::Ca)
@@ -351,6 +356,7 @@ impl MethodId {
 pub fn resolve(method: &str) -> Option<MethodId> {
     match method {
         DAEMON_HEALTH => Some(MethodId::Health),
+        LANDLOCK_RESOLVE => Some(MethodId::LandlockResolve),
         INTENT_PROPOSE => Some(MethodId::IntentPropose),
         INTENT_PROPOSE_COMMAND => Some(MethodId::IntentProposeCommand),
         AUTHORIZATION_EVALUATE => Some(MethodId::Authorization(AuthorizationMethod::Evaluate)),

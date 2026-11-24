@@ -570,6 +570,10 @@ v1/v2 仍按已有的 principal 头部规则决定哪些策略可用于请求授
 名称、可执行路径和命令行 selector 持续发现已有和后续进程；PID 固定第一次观察到的实例，
 不跟随 PID 复用。目前拒绝 cgroup assignment。
 
+`--backend landlock --executable PATH` 创建启动时解析的 Scope，仅接收一份 Cedar Policy。
+`agent-sec-cli landlock --from-scope` 在启动程序前匹配可执行文件路径与调用用户。使用步骤见
+[Landlock 内核文件约束](landlock.md#通过-scope-启动程序)。
+
 `--cmdline-arg` 用于在 node、python 等共享解释器下运行的脚本型 Agent：这类进程的
 进程名和可执行路径只能标识解释器。传入用户实际运行的命令路径，即 `which` 的输出。
 `/proc/PID/cmdline` 中任一参数与该路径逐字节相等即命中；不解析符号链接，子串或前缀

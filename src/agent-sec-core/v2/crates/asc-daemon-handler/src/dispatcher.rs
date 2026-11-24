@@ -196,6 +196,10 @@ impl DaemonDispatcher {
                 self.pap
                     .handle(request_id, &principal, method, request.params)
             }
+            MethodId::LandlockResolve => {
+                self.pap
+                    .resolve_landlock(request_id, &principal, request.params)
+            }
             MethodId::Query(method) => {
                 self.queries
                     .handle(request_id, &principal, method, request.params)

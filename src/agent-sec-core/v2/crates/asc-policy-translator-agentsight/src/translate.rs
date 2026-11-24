@@ -95,7 +95,10 @@ impl AgentSightTranslator {
 }
 
 fn translate_scope(scope: &BindingScope) -> Result<AgentSightScopePlan, TranslationRejection> {
-    if matches!(scope.selector, ScopeSelector::CgroupId { .. }) {
+    if matches!(
+        scope.selector,
+        ScopeSelector::CgroupId { .. } | ScopeSelector::LandlockLaunch { .. }
+    ) {
         return Err(rejection("UNSUPPORTED_SCOPE_SELECTOR"));
     }
     let pid = scope.process.pid;

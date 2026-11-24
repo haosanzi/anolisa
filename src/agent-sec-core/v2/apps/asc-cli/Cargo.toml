@@ -49,6 +49,9 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 unicode-properties = { workspace = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+asc-landlock = { workspace = true }
+
 [dev-dependencies]
 tempfile = { workspace = true }
 asc-persistence-sqlite = { workspace = true }

@@ -4,7 +4,6 @@ use asc_file_policy::{
     FileProtectionExclusion, FileProtectionExclusionKind, FileProtectionTarget,
     FileProtectionTargetKind,
 };
-use cedar_policy::pst::{BinaryOp, Expr, Literal, PatternElem, Var};
 
 use super::{Result, expressions::FileRule, protections};
 
@@ -50,73 +49,6 @@ pub(super) fn validate_path(path: &str) -> Result<()> {
         return Err("UNSUPPORTED_PATH");
     }
     Ok(())
-}
-
-pub(super) fn path_field(expr: &Expr) -> bool {
-    matches!(expr, Expr::GetAttr { expr, attr } if attr == "path" && matches!(expr.as_ref(), Expr::Var(Var::Resource)))
-}
-
-fn exact(expr: &Expr) -> Option<&str> {
-    let Expr::BinaryOp {
-        op: BinaryOp::Eq,
-        left,
-        right,
-    } = expr
-    else {
-        return None;
-    };
-    match (left.as_ref(), right.as_ref()) {
-        (field, Expr::Literal(Literal::String(path)))
-        | (Expr::Literal(Literal::String(path)), field)
-            if path_field(field) =>
-        {
-            Some(path)
-        }
-        _ => None,
-    }
-}
-
-// A lone trailing wildcard excludes the root. Only root equality OR its
-// descendant pattern denotes the directory_tree contract.
-pub(super) fn tree(expr: &Expr) -> Option<String> {
-    let Expr::BinaryOp {
-        op: BinaryOp::Or,
-        left,
-        right,
-    } = expr
-    else {
-        return None;
-    };
-    for (root, children) in [
-        (left.as_ref(), right.as_ref()),
-        (right.as_ref(), left.as_ref()),
-    ] {
-        let Some(root) = exact(root) else {
-            continue;
-        };
-        let Expr::Like { expr, pattern } = children else {
-            continue;
-        };
-        if !path_field(expr) || !matches!(pattern.last(), Some(PatternElem::Wildcard)) {
-            continue;
-        }
-        let prefix: Option<String> = pattern[..pattern.len() - 1]
-            .iter()
-            .map(|part| match part {
-                PatternElem::Char(ch) => Some(*ch),
-                PatternElem::Wildcard => None,
-            })
-            .collect();
-        let expected = if root == "/" {
-            "/".into()
-        } else {
-            format!("{root}/")
-        };
-        if prefix.as_deref() == Some(&expected) {
-            return Some(root.into());
-        }
-    }
-    None
 }
 
 impl FileRule {

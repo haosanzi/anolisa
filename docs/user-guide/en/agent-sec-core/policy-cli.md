@@ -704,6 +704,11 @@ See the [sandbox guide](sandbox.md#use-policy-authorization).
 
 ## Manage Scopes
 
+`--backend landlock --executable PATH` creates a startup Scope for one Cedar
+Policy. `agent-sec-cli landlock --from-scope` looks up the executable and
+caller before launching the program. See
+[Landlock kernel file enforcement](landlock.md#start-a-program-through-a-scope).
+
 Create an assignment with a Policy ID and exact revision, plus one selector:
 `--process-name` for an exact Linux process name (1–15 bytes), `--executable` for an
 exact normalized absolute executable path, `--cmdline-arg` for an exact normalized

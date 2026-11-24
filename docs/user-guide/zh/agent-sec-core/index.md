@@ -26,6 +26,10 @@ Rust V2 SkillSec 核心迁移见 [V2 指南](skillsec-v2.md)。
 | Observability | 交互式事件审阅 TUI，4 级下钻 |
 | Security Events | 本地安全事件存储，支持查询与聚合统计 |
 
+### 内核约束
+
+- [Landlock](landlock.md) 限制目标程序及其子进程对文件和目录的访问。
+
 ## 前置条件
 
 - 源码和 RPM 安装支持 Linux x86_64、aarch64

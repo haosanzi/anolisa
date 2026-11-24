@@ -9,6 +9,8 @@ mod gateway;
 mod inject_credential;
 mod intent;
 mod key;
+#[cfg(target_os = "linux")]
+pub(crate) mod landlock;
 mod observability;
 mod policy;
 mod scan_code;
@@ -44,6 +46,9 @@ pub(crate) enum Command {
     /// Run a command locally with explicitly supplied sandbox permissions.
     #[command(subcommand)]
     Sandbox(crate::sandbox::SandboxCommand),
+    /// Launch a program locally with a Landlock file access policy.
+    #[cfg(target_os = "linux")]
+    Landlock(landlock::LandlockRun),
     /// Generate unapproved Cedar: daemon proposals from tasks, local init from explicit rules.
     #[command(subcommand)]
     Intent(intent::IntentCommand),
@@ -113,6 +118,26 @@ impl LocalCommand<'_> {
 }
 
 impl Command {
+    #[cfg(target_os = "linux")]
+    pub(crate) const fn landlock(&self) -> Option<&landlock::LandlockRun> {
+        match self {
+            Self::Landlock(command) => Some(command),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn is_standalone_landlock(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            self.landlock()
+                .is_some_and(|command| !command.requires_daemon())
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            false
+        }
+    }
+
     pub(crate) const fn sandbox(&self) -> Option<&crate::sandbox::SandboxCommand> {
         match self {
             Self::Sandbox(command) => Some(command),
@@ -165,6 +190,8 @@ impl Command {
             Self::Capabilities(_) | Self::Sandbox(_) | Self::Key(_) => {
                 Err(InputError::LocalCommand)
             }
+            #[cfg(target_os = "linux")]
+            Self::Landlock(_) => Err(InputError::LocalCommand),
             // Gateway commands own their transport and response rendering.
             Self::Gateway(_) => Err(InputError::Gateway(
                 "gateway commands run through their own transport".into(),

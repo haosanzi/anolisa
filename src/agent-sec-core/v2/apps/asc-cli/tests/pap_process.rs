@@ -195,6 +195,129 @@ async fn scope_cli_creates_discovery_jobs_and_rejects_nonadministrators() {
     }
 }
 
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn landlock_scope_controls_launch_and_delete_affects_future_processes() {
+    use std::process::{Command, Stdio};
+
+    if std::env::var_os("ASC_TASK_LANDLOCK_INTEGRATION").is_none() {
+        return;
+    }
+    let directory = common::Directory::new();
+    let socket = directory.0.join("daemon.sock");
+    let (shutdown, task, _) = start(&socket, PrincipalRole::PolicyAdministrator).await;
+    let policy_file = directory.0.join("landlock.cedar");
+    let cli = env!("CARGO_BIN_EXE_agent-sec-cli");
+    let cosh = std::env::var_os("ASC_TEST_COSH_BINARY");
+    let target =
+        std::fs::canonicalize(cosh.as_deref().unwrap_or(std::ffi::OsStr::new("/bin/sh"))).unwrap();
+    let runtime = target.parent().unwrap().to_str().unwrap();
+    let nss = std::fs::canonicalize("/etc/nsswitch.conf").unwrap();
+    let nss = nss.to_str().unwrap();
+    std::fs::write(
+        &policy_file,
+        format!(
+            r#"permit(principal, action == SecCore::Action::"file.read", resource is SecCore::File)
+when {{ (resource.path == "/usr" || resource.path like "/usr/*") ||
+        (resource.path == "{runtime}" || resource.path like "{runtime}/*") ||
+        resource.path == "/etc/passwd" || resource.path == "{nss}" }};
+permit(principal, action in [SecCore::Action::"file.read", SecCore::Action::"file.write"], resource is SecCore::File)
+when {{ resource.path == "/dev/null" }};"#
+        ),
+    )
+    .unwrap();
+    let entry = directory.0.join(if cosh.is_some() { "cosh" } else { "sh" });
+    std::os::unix::fs::symlink(&target, &entry).unwrap();
+    let admin = |args: &[&str]| {
+        let output = Command::new(cli)
+            .arg("--socket")
+            .arg(&socket)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice::<Value>(&output.stdout).unwrap()
+    };
+    let policy = admin(&[
+        "policy",
+        "create",
+        "--name",
+        "restricted-program",
+        "--file",
+        policy_file.to_str().unwrap(),
+    ]);
+    let id = policy["policyId"].as_str().unwrap();
+    let scope = admin(&[
+        "scope",
+        "create",
+        "--backend",
+        "landlock",
+        "--executable",
+        target.to_str().unwrap(),
+        "--policy-id",
+        id,
+        "--policy-revision",
+        "1",
+    ]);
+    assert_eq!(scope["selector"]["kind"], "landlock_launch");
+    let scope_id = scope["scopeId"].as_str().unwrap();
+    let revision = policy["revision"].as_u64().unwrap();
+    std::fs::write(
+        &policy_file,
+        r#"forbid(principal, action == SecCore::Action::"file.read", resource is SecCore::File);"#,
+    )
+    .unwrap();
+    let updated = admin(&[
+        "policy",
+        "update",
+        "--policy-id",
+        id,
+        "--name",
+        "restricted-program",
+        "--file",
+        policy_file.to_str().unwrap(),
+    ]);
+    assert_eq!(updated["revision"], revision + 1);
+    let path = directory.0.join("host-write");
+    let script = format!("echo hello > '{}'; echo launched", path.display());
+    let launch = || {
+        Command::new(cli)
+            .arg("--socket")
+            .arg(&socket)
+            .args(["landlock", "--from-scope", "--"])
+            .arg(&entry)
+            .env("COSH_SHELL_DEFAULT_SHELL", "/bin/sh")
+            .args(["-c", &script])
+            .stdin(Stdio::null())
+            .output()
+            .unwrap()
+    };
+    let output = launch();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("launched"));
+    let installed = format!("Landlock scope {scope_id} installed (policy revision {revision})");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.lines().any(|line| line == installed), "{stderr}");
+    assert!(!path.exists(), "the selected scope must block the write");
+    let deletion = admin(&["scope", "delete", "--scope-id", scope_id]);
+    assert_eq!(deletion["completed"], true);
+    let output = launch();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("no active Landlock scope"));
+    assert!(!path.exists());
+
+    shutdown.request();
+    task.await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn real_cli_processes_execute_the_complete_frozen_pap_crud_scenario() {
     let directory = common::Directory::new();

@@ -28,6 +28,10 @@ The optional [Skill safety assessment](skill-score.md) uses the native ASC CLI a
 | Observability | Interactive event review with 4-level drill-down TUI |
 | Security Events | Local event store for querying and aggregating security findings |
 
+### Kernel enforcement
+
+- [Landlock](landlock.md) restricts file access for a program and its child processes.
+
 ## Prerequisites
 
 - Linux x86_64 or aarch64 for source and RPM installations

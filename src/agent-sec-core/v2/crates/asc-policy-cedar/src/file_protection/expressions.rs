@@ -3,9 +3,11 @@
 use asc_file_policy::{FilePathPattern, PatternSyntax};
 use cedar_policy::pst::{BinaryOp, Expr, Literal, PatternElem, UnaryOp, Var};
 
+use crate::path_condition::{directory_tree_root, is_resource_path};
+
 use super::{
     MAX_TARGETS, Result,
-    paths::{PathScope, path_field, tree, validate_path},
+    paths::{PathScope, validate_path},
 };
 
 pub(super) const DELETE: u8 = 1;
@@ -109,7 +111,7 @@ fn operation_field(expr: &Expr) -> bool {
 
 fn equality(field: &Expr, value: &Expr, negate: bool) -> Result<Vec<FileRule>> {
     if let Expr::Literal(Literal::String(value)) = value
-        && path_field(field)
+        && is_resource_path(field)
     {
         return path(value, false, negate);
     }
@@ -167,11 +169,11 @@ pub(super) fn expression(
     if depth > 64 {
         return Err("EXPRESSION_LIMIT_EXCEEDED");
     }
-    if let Some(root) = tree(expr) {
-        return path(&root, true, negate);
+    if let Some(root) = directory_tree_root(expr) {
+        return path(root, true, negate);
     }
     match expr {
-        Expr::Like { expr, pattern } if path_field(expr) => Ok(vec![like(pattern, negate)]),
+        Expr::Like { expr, pattern } if is_resource_path(expr) => Ok(vec![like(pattern, negate)]),
         Expr::Literal(Literal::Bool(value)) => Ok(if *value == negate {
             vec![]
         } else {
@@ -223,7 +225,7 @@ pub(super) fn expression(
             left,
             right,
         } => {
-            if !path_field(right) && !operation_field(right) {
+            if !is_resource_path(right) && !operation_field(right) {
                 return Err("UNSUPPORTED_CONDITION");
             }
             let Expr::Set(values) = left.as_ref() else {

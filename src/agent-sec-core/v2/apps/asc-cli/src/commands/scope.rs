@@ -38,6 +38,9 @@ pub(crate) struct CreateScope {
     /// Non-root process owner UID (required by credential policies).
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..), conflicts_with = "pid")]
     owner_uid: Option<u32>,
+    /// Resolve and enforce this Scope before launching the selected executable.
+    #[arg(long, value_parser = ["landlock"], requires = "executable")]
+    backend: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -70,7 +73,12 @@ impl ScopeCommand {
             Self::Create(input) => encode(
                 POLICY_SCOPES_CREATE,
                 &CreateScopeParams {
-                    selector: input.selector.value(),
+                    selector: match (input.backend.as_deref(), &input.selector.executable) {
+                        (Some("landlock"), Some(path)) => ScopeSelector::LandlockLaunch {
+                            executable: path.clone(),
+                        },
+                        _ => input.selector.value(),
+                    },
                     owner_uid: input.owner_uid,
                     policy_templates: vec![PolicyReference {
                         policy_id: input.policy_id.clone(),

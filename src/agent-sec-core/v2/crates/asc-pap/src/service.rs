@@ -563,24 +563,12 @@ where
         };
         candidate.validate().map_err(PapError::InvalidScope)?;
         let _guard = self.scope_mutation_lock(&candidate)?;
-        let discovery = self.discovery.as_ref().ok_or(PapError::Unavailable)?;
-        let credential = candidate.uses_credentials();
-        // File admission retains its own readiness contract; credential-only scopes
-        // must not depend on a disabled file enforcement backend.
-        let mut requires_file = false;
-        for policy in &candidate.policy_snapshots {
-            requires_file |= if !policy.uses_credentials() {
-                true
-            } else if let PolicySource::Cedar(source) = &policy.template {
-                let syntax = asc_policy_cedar::pst(source)
-                    .map_err(|error| PapError::InvalidCedar(error.diagnostic()))?;
-                asc_policy_cedar::project_pst(&syntax, asc_policy_cedar::PolicyDomain::File)
-                    .is_some()
-            } else {
-                false
-            };
+        let discovery = self.discovery.as_ref();
+        if !candidate.is_landlock_launch() && discovery.is_none() {
+            return Err(PapError::Unavailable);
         }
-        if requires_file {
+        let credential = candidate.uses_credentials();
+        if !candidate.is_landlock_launch() && Self::requires_file_readiness(&candidate)? {
             self.check_ready()?;
         }
         if credential {
@@ -599,6 +587,9 @@ where
             result => result?,
         };
         tracing::Span::current().record("scope_id", tracing::field::display(&scope.scope_id));
+        if scope.is_landlock_launch() {
+            return Ok(scope);
+        }
         let started = (|| {
             if credential {
                 self.execution
@@ -608,7 +599,7 @@ where
             }
             self.repository
                 .scope_discovery_seed(&scope.scope_id)
-                .and_then(|seed| discovery.start(&seed))
+                .and_then(|seed| discovery.ok_or(PapError::Unavailable)?.start(&seed))
         })();
         tracing::debug!(
             target: "asc_observability::diagnostic", component = "policy_pap",
@@ -635,6 +626,61 @@ where
             return Err(error);
         }
         Ok(scope)
+    }
+
+    fn requires_file_readiness(scope: &PreparedScope) -> Result<bool, PapError> {
+        // A credential-only scope is independent of the file enforcement backend.
+        let mut requires_file = false;
+        for policy in &scope.policy_snapshots {
+            requires_file |= if !policy.uses_credentials() {
+                true
+            } else if let PolicySource::Cedar(source) = &policy.template {
+                let syntax = asc_policy_cedar::pst(source)
+                    .map_err(|error| PapError::InvalidCedar(error.diagnostic()))?;
+                asc_policy_cedar::project_pst(&syntax, asc_policy_cedar::PolicyDomain::File)
+                    .is_some()
+            } else {
+                false
+            };
+        }
+        Ok(requires_file)
+    }
+
+    /// Resolves the immutable launch assignment for a local caller and executable.
+    ///
+    /// # Errors
+    /// Rejects malformed paths, overlapping assignments and storage failures.
+    pub fn resolve_landlock_launch(
+        &self,
+        executable: &str,
+        uid: u32,
+    ) -> Result<Option<PreparedScope>, PapError> {
+        const PAGE_SIZE: usize = 128;
+        let selector = ScopeSelector::LandlockLaunch {
+            executable: executable.into(),
+        };
+        selector.validate().map_err(PapError::InvalidScope)?;
+        let mut after = None;
+        let mut result = None;
+        loop {
+            let scopes = self.repository.scan_scopes(after.as_ref(), PAGE_SIZE)?;
+            let complete = scopes.len() < PAGE_SIZE;
+            for scope in scopes {
+                after = Some(scope.scope_id.clone());
+                if scope.status == asc_policy_types::scope::ScopeStatus::Active
+                    && scope.selector == selector
+                    && scope.owner_uid.is_none_or(|owner| owner == uid)
+                {
+                    if result.is_some() {
+                        return Err(PapError::Conflict);
+                    }
+                    result = Some(scope);
+                }
+            }
+            if complete {
+                return Ok(result);
+            }
+        }
     }
 
     /// Reads an assignment by identity.
@@ -828,6 +874,9 @@ where
     /// A retired credential keeps its tombstone, so restoration must not reject
     /// the Scope: independent file Policies still need their discovery worker.
     fn recover_active_scope(&self, scope: &PreparedScope) -> Result<(), PapError> {
+        if scope.is_landlock_launch() {
+            return Ok(());
+        }
         if scope.uses_credentials() {
             let execution = self.execution.as_ref().ok_or(PapError::Unavailable)?;
             execution.validate(scope)?;
@@ -873,7 +922,7 @@ where
                 }
             }
         }
-        if stop_discovery {
+        if stop_discovery && !scope.is_landlock_launch() {
             self.discovery
                 .as_ref()
                 .ok_or(PapError::Unavailable)?

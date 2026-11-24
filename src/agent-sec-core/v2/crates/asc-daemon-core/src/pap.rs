@@ -255,6 +255,18 @@ pub trait PolicyAdministration: Send + Sync {
         owner_uid: Option<u32>,
     ) -> Result<PreparedScope, PolicyAdministrationError>;
 
+    /// Looks up a launch scope for the authenticated caller.
+    ///
+    /// # Errors
+    /// Returns unavailable, validation, or storage errors.
+    fn resolve_landlock_launch(
+        &self,
+        _principal: &Principal,
+        _executable: &str,
+    ) -> Result<Option<PreparedScope>, PolicyAdministrationError> {
+        Err(project_pap_error(PapError::Unavailable, None))
+    }
+
     /// Reads an immutable assignment and its lifecycle status.
     ///
     /// # Errors
@@ -413,6 +425,15 @@ where
             require_credential_authority(principal, policy.uses_credentials())?;
         }
         PapService::create_scope_assignment(self, selector, policies, owner_uid)
+            .map_err(|error| project_pap_error(error, None))
+    }
+
+    fn resolve_landlock_launch(
+        &self,
+        principal: &Principal,
+        executable: &str,
+    ) -> Result<Option<PreparedScope>, PolicyAdministrationError> {
+        PapService::resolve_landlock_launch(self, executable, principal.peer().uid())
             .map_err(|error| project_pap_error(error, None))
     }
 

@@ -5,6 +5,10 @@
 `agent-sec-cli sandbox run` 根据调用方提供的文件和网络权限限制目标命令及其子进程，
 在本地执行，无需 `agent-sec-daemon`。调用方选择权限，sandbox 在启动命令前安装这些限制。
 
+<a id="使用-landlock-直接启动-task"></a>
+
+如需在启动程序时应用文件访问策略，见 [Landlock 内核文件约束](landlock.md)。
+
 ## 运行要求
 
 按[组件指南](index.md#安装)安装 Rust V2 CLI。默认 Linux 后端要求 Linux、非特权 user namespace，

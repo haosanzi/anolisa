@@ -131,6 +131,8 @@ fn exec_score(command: &asc_cli::SkillScoreCommand) -> ExitCode {
 
 fn run(cli: &Cli) -> Result<u8, RunError> {
     let socket = match cli.plan() {
+        #[cfg(target_os = "linux")]
+        Plan::Landlock(command) => return Ok(command.run(cli.socket(), cli.timeout())?),
         Plan::Sandbox(command) => {
             return Ok(command.run(cli.socket(), cli.timeout())?);
         }

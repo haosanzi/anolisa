@@ -118,6 +118,9 @@ The current crates are:
 - `asc-pep-runtime`: command and path preparation, strict sandbox execution and
   installation-handshake supervision, plus upper-PEP authorization, approval and
   receipt handling for embedding applications.
+- `asc-landlock`: strict Landlock installation for Cedar and Island TOML filesystem policies
+  for direct host launch. The Linux `agent-sec-cli landlock` command delegates
+  execution to this crate. See the [Landlock guide](../../../docs/user-guide/en/agent-sec-core/landlock.md).
 - `asc-pdp-runtime`: OS request evaluation over a combined Cedar policy set, advice
   handling and five-state decisions within the requested permissions.
   `from_policy_set` is the sole policy-loading API.

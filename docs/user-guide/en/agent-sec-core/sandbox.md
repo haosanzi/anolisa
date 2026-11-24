@@ -6,6 +6,10 @@
 filesystem and network permissions. It runs locally without `agent-sec-daemon`. The caller
 chooses the permissions; the sandbox installs them before starting the command.
 
+<a id="launch-a-task-directly-with-landlock"></a>
+
+To start a program with a file access policy, see [Landlock kernel file enforcement](landlock.md).
+
 ## Requirements
 
 Install the Rust V2 CLI using the [component guide](index.md#installation).

@@ -87,7 +87,10 @@ impl ScopeDiscoveryState {
             instances,
         } = seed;
         scope.validate().map_err(|_| "invalid scope assignment")?;
-        if matches!(scope.selector, ScopeSelector::CgroupId { .. }) {
+        if matches!(
+            scope.selector,
+            ScopeSelector::CgroupId { .. } | ScopeSelector::LandlockLaunch { .. }
+        ) {
             return Err("cgroup discovery is unsupported");
         }
         Ok(Self {
@@ -191,7 +194,7 @@ impl ScopeDiscoveryState {
                         }
                         selected
                     }
-                    ScopeSelector::CgroupId { .. } => false,
+                    ScopeSelector::CgroupId { .. } | ScopeSelector::LandlockLaunch { .. } => false,
                 };
 
                 self.checked.insert(

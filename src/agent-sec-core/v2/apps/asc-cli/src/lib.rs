@@ -34,6 +34,9 @@ pub struct Cli {
 /// How a parsed invocation reaches its result.
 #[derive(Debug)]
 pub enum Plan<'a> {
+    /// Run a program with Landlock, optionally resolving its Scope through the daemon.
+    #[cfg(target_os = "linux")]
+    Landlock(&'a commands::landlock::LandlockRun),
     /// Run a direct sandbox or the internal host authorization handoff.
     Sandbox(&'a sandbox::SandboxCommand),
     /// Approved local operation without any daemon involvement.
@@ -150,6 +153,7 @@ impl Cli {
             None if arguments.command.is_observability_schema()
                 || arguments.command.policy_default().is_some()
                 || arguments.command.skill_score().is_some()
+                || arguments.command.is_standalone_landlock()
                 || arguments
                     .command
                     .sandbox()
@@ -193,6 +197,10 @@ impl Cli {
 
     /// Reports whether this invocation runs locally or against the daemon.
     pub fn plan(&self) -> Plan<'_> {
+        #[cfg(target_os = "linux")]
+        if let Some(command) = self.command.landlock() {
+            return Plan::Landlock(command);
+        }
         if let Some(command) = self.command.sandbox() {
             return Plan::Sandbox(command);
         }

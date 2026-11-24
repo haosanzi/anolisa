@@ -10,6 +10,7 @@ pub mod default_policy;
 pub mod deployment;
 pub mod file_protection;
 pub mod http;
+pub mod path_condition;
 mod rewrite;
 pub mod schema;
 pub mod selection;

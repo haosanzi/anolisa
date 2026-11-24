@@ -126,7 +126,7 @@
     {
       "name": "create scope with a legacy selector",
       "request": {"method": "policy.scopes.create", "params": {"selector": {"kind": "legacy_execution_domain", "executionDomainId": "legacy-domain"}}},
-      "expectedError": {"code": "invalid_request", "message": "unknown variant `legacy_execution_domain`, expected one of `pid`, `process`, `cgroup_id`"}
+      "expectedError": {"code": "invalid_request", "message": "unknown variant `legacy_execution_domain`, expected one of `pid`, `process`, `landlock_launch`, `cgroup_id`"}
     },
     {
       "name": "update scope with a legacy selector",

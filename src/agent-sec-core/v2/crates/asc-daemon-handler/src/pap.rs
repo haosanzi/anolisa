@@ -31,7 +31,33 @@ impl PapHandler {
         method: PapMethod,
         params: serde_json::Value,
     ) -> DaemonResponse {
-        match dispatch(method, params, self.application.as_ref(), principal) {
+        Self::respond(
+            request_id,
+            dispatch(method, params, self.application.as_ref(), principal),
+        )
+    }
+
+    pub(super) fn resolve_landlock(
+        &self,
+        request_id: RequestId,
+        principal: &Principal,
+        params: serde_json::Value,
+    ) -> DaemonResponse {
+        let result =
+            decode::<asc_daemon_protocol::ResolveLandlockParams>(params).and_then(|input| {
+                encode(
+                    self.application
+                        .resolve_landlock_launch(principal, &input.executable)?,
+                )
+            });
+        Self::respond(request_id, result)
+    }
+
+    fn respond(
+        request_id: RequestId,
+        result: Result<serde_json::Value, PapDispatchError>,
+    ) -> DaemonResponse {
+        match result {
             // TODO(policy-response-bounds): full PreparedPolicy and BindingView results can exceed
             // the transport response limit after a mutation has committed. Before a durable
             // Repository is exposed, bound public result shapes and verify every mutation result

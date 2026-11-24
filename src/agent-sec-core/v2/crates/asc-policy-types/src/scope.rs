@@ -22,6 +22,11 @@ pub enum ScopeSelector {
         #[serde(rename = "match")]
         matcher: ProcessMatcher,
     },
+    /// Matches an executable before its launcher installs a Landlock ruleset.
+    LandlockLaunch {
+        /// Exact normalized absolute path to the executable being launched.
+        executable: String,
+    },
     /// Caller-observed cgroup id.
     CgroupId { cgroup_id: u64 },
 }
@@ -34,7 +39,13 @@ impl Validate for ScopeSelector {
                 Err(ValidationError::new("cgroupId", "must be positive"))
             }
             Self::Process { matcher } => matcher.validate(),
-            Self::Pid { .. } | Self::CgroupId { .. } => Ok(()),
+            Self::LandlockLaunch { executable } if !is_normalized_absolute_path(executable) => {
+                Err(ValidationError::new(
+                    "executable",
+                    "must be a normalized absolute executable path",
+                ))
+            }
+            Self::LandlockLaunch { .. } | Self::Pid { .. } | Self::CgroupId { .. } => Ok(()),
         }
     }
 }
@@ -154,6 +165,11 @@ impl PreparedScope {
             .map(|selection| selection.backend)
     }
 
+    /// Whether the assignment is resolved synchronously by a Landlock launcher.
+    pub fn is_landlock_launch(&self) -> bool {
+        matches!(self.selector, ScopeSelector::LandlockLaunch { .. })
+    }
+
     /// Whether pinned policies require credential execution and durable release.
     pub fn uses_credentials(&self) -> bool {
         self.policy_snapshots
@@ -202,6 +218,17 @@ impl Validate for PreparedScope {
             return Err(ValidationError::new(
                 "ownerUid",
                 "credential scopes require a non-root UID and continuous process selector",
+            ));
+        }
+        if self.is_landlock_launch()
+            && !matches!(
+                self.policy_snapshots.as_slice(),
+                [policy] if matches!(policy.template, crate::authoring::PolicySource::Cedar(_))
+            )
+        {
+            return Err(ValidationError::new(
+                "policyTemplates",
+                "Landlock launch requires exactly one Cedar policy",
             ));
         }
         self.selector.validate()

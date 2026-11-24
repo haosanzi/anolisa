@@ -369,3 +369,14 @@ Scope 创建成功仅表示分配已保存，后续 Binding 可因目标不支�
 三处快照重开及旧编码拒绝见 [SQLite 契约测试](../../v2/crates/asc-policy-repository-sqlite/tests/contracts.rs)。
 [HTTP mock E2E](../../tests/v2/e2e/test_policy_delivery_e2e.py) 覆盖完整下发与含不支持规则时
 保存成功、Binding 失败且无 HTTP 调用。测试验证本地数据和 mock 请求，不代表真实内核执行。
+
+## 8. Landlock 启动 Scope
+
+`scope create --backend landlock --executable PATH` 保存 `landlock_launch`
+selector 和一份不可变的 Cedar Policy 快照。该 Scope 供启动器同步解析，不启动进程扫描，
+也不要求 AgentSight 就绪。重启 daemon 后可以继续解析同一条 Scope。
+
+通用入口 `agent-sec-cli landlock --from-scope` 通过 `policy.landlock.resolve`
+提交规范化的绝对可执行文件路径。
+daemon 根据 UDS peer UID 筛选 active Scope。无匹配返回 `null`，多条匹配返回冲突。
+启动器只在内核规则完整生效后输出安装确认。

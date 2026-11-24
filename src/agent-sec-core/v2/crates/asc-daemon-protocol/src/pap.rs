@@ -46,6 +46,14 @@ pub struct CreateScopeParams {
     pub owner_uid: Option<u32>,
 }
 
+/// The executable a local launcher plans to start.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResolveLandlockParams {
+    /// Exact absolute executable path from the launcher's runtime selection.
+    pub executable: String,
+}
+
 fn deserialize_authored_selector<'de, D>(deserializer: D) -> Result<ScopeSelector, D::Error>
 where
     D: Deserializer<'de>,
